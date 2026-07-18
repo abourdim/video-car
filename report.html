@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VideoCar — Change Report</title>
+<style>
+  :root{
+    --bg:#0B0F14; --panel:#121822; --panel-2:#0E141C; --border:#1F2B38;
+    --cyan:#4CE0D2; --amber:#FFB454; --danger:#FF5C5C;
+    --text:#E7F1F2; --muted:#7C93A0;
+    --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);
+    line-height:1.6;padding:0 0 60px;}
+  .wrap{max-width:760px;margin:0 auto;padding:0 20px;}
+  header{padding:36px 0 24px;border-bottom:1px solid var(--border);margin-bottom:28px;}
+  header h1{margin:0 0 6px;font-size:22px;letter-spacing:.08em;text-transform:uppercase;}
+  header h1 span{color:var(--amber);}
+  header .meta{font-size:12px;color:var(--muted);letter-spacing:.04em;}
+  header .meta code{color:var(--cyan);background:var(--panel-2);padding:1px 6px;border-radius:4px;}
+  h2{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+    margin:40px 0 14px;display:flex;align-items:center;gap:8px;}
+  h2::after{content:"";flex:1;height:1px;background:var(--border);}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    padding:18px 20px;margin-bottom:14px;}
+  .panel h3{margin:0 0 8px;font-size:14px;color:var(--cyan);letter-spacing:.02em;}
+  .panel p{margin:0;color:var(--text);font-size:13.5px;}
+  .panel p + p{margin-top:8px;}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--bg);background:var(--amber);border-radius:4px;padding:2px 7px;margin-left:8px;
+    vertical-align:middle;}
+  .tag.danger{background:var(--danger);}
+  ul{margin:8px 0 0;padding-left:20px;font-size:13.5px;}
+  li{margin:4px 0;}
+  code, .mono{font-family:var(--mono);color:var(--cyan);font-size:.92em;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);}
+  th{color:var(--muted);font-weight:400;letter-spacing:.06em;text-transform:uppercase;font-size:11px;}
+  .commit{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);}
+  .commit:last-child{border-bottom:0;}
+  .commit .hash{color:var(--amber);font-size:12px;white-space:nowrap;}
+  .commit .msg{font-size:13.5px;}
+  .commit .msg .subject{color:var(--text);display:block;margin-bottom:2px;}
+  .commit .msg .body{color:var(--muted);font-size:12.5px;white-space:pre-wrap;}
+  .shot{width:100%;border-radius:8px;border:1px solid var(--border);display:block;margin-top:10px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:560px){.grid2{grid-template-columns:1fr;}}
+  footer{margin-top:50px;padding-top:20px;border-top:1px solid var(--border);
+    font-size:11.5px;color:var(--muted);}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cyan);
+    box-shadow:0 0 6px var(--cyan);margin-right:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>&#128663; VIDEO<span>CAR</span> &mdash; CHANGE REPORT</h1>
+    <div class="meta">
+      Package: <code>Codes/4_VideoCar</code> &nbsp;|&nbsp;
+      Latest commit: <code>HEAD</code> &nbsp;|&nbsp;
+      2026-07-18
+    </div>
+  </header>
+
+  <h2><span class="dot"></span>Summary</h2>
+  <div class="panel">
+    <p>This package tracks three rounds of enhancements made to the keyestudio ESP32-CAM
+    Video Car sketch's web control server (<code>app_server.h</code>) and main sketch
+    (<code>4_VideoCar.ino</code>): a virtual joystick control, a connection-loss failsafe
+    with WiFi auto-reconnect, and a full visual redesign of the on-device control page.
+    The repo has two commits &mdash; the original unmodified sketch as a baseline, and a
+    second commit with all enhancements applied, so the diff against stock keyestudio
+    firmware is always inspectable with <code>git diff</code>.</p>
+  </div>
+
+  <h2><span class="dot"></span>Features added</h2>
+
+  <div class="panel">
+    <h3>Joystick control <span class="tag">new endpoint</span></h3>
+    <p>A draggable on-screen joystick sends position updates to a new
+    <code>GET /joystick?x=&amp;y=</code> endpoint. The firmware mixes throttle/steer into
+    per-wheel PWM using the same sign convention as the existing D-pad handlers, so it drives
+    smoothly at any angle instead of just four discrete directions, and honors the Speed
+    slider as a PWM cap.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Connection-loss failsafe <span class="tag danger">safety</span></h3>
+    <p>Previously, if WiFi dropped or the browser tab closed mid-drive, the car kept
+    driving indefinitely &mdash; no timeout existed anywhere in the stack. Now:</p>
+    <ul>
+      <li>Every movement command stamps <code>lastCommandMillis</code>.</li>
+      <li><code>loop()</code> runs every 50&nbsp;ms and force-stops the motors if
+        500&nbsp;ms pass with no fresh command.</li>
+      <li>The browser resends the current command every 100&nbsp;ms (previously only on
+        change), acting as a continuous heartbeat well inside that window.</li>
+      <li>Station-mode WiFi now uses <code>WiFi.setAutoReconnect(true)</code> plus an
+        explicit retry loop.</li>
+      <li>The MJPEG <code>&lt;img&gt;</code> stream reloads itself on <code>error</code>
+        instead of freezing forever.</li>
+      <li>A live connection dot polls <code>/status</code> every 2&nbsp;s so a drop is
+        visible, not just inferred from the car stopping.</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h3>Mission-control UI redesign <span class="tag">visual</span></h3>
+    <p>Replaced the stock purple-button table layout with a dark cockpit theme: monospace
+    console type, cyan/amber/red accent system, camera-viewfinder corner brackets and a
+    blinking &ldquo;LIVE&rdquo; tag around the video feed, grouped labeled panels (Drive
+    / Manual / Systems), live numeric readouts next to every slider, and a responsive
+    layout (previously hard-locked to 400px). Also fixed a pre-existing bug where the
+    Speed and Trim sliders shared the same <code>id="speed"</code>.</p>
+    <img class="shot" src="preview_full.png" alt="Redesigned control page screenshot">
+  </div>
+
+  <h2><span class="dot"></span>Files changed</h2>
+  <div class="panel">
+    <table>
+      <tr><th>File</th><th>Change</th></tr>
+      <tr><td class="mono">Codes/4_VideoCar/4_VideoCar.ino</td>
+          <td>Added failsafe + WiFi reconnect logic to <code>loop()</code></td></tr>
+      <tr><td class="mono">Codes/4_VideoCar/app_server.h</td>
+          <td>New <code>/joystick</code> handler, heartbeat wiring, full HTML/CSS/JS
+              rewrite of the control page</td></tr>
+      <tr><td class="mono">Codes/4_VideoCar/SetMotor.h</td><td>Unchanged</td></tr>
+      <tr><td class="mono">Codes/1_Blink, 2_breathing_light, 3_motor</td>
+          <td>Unchanged &mdash; included for a complete package</td></tr>
+    </table>
+  </div>
+
+  <h2><span class="dot"></span>Commit history</h2>
+  <div class="panel">
+    <div class="commit">
+      <div class="hash">HEAD</div>
+      <div class="msg">
+        <span class="subject">Add report.html: change report summarizing joystick, failsafe, and UI redesign work</span>
+        <span class="body">This document.</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">5685f2b</div>
+      <div class="msg">
+        <span class="subject">VideoCar: add joystick control, connection failsafe, and mission-control UI redesign</span>
+        <span class="body">New /joystick endpoint, on-screen virtual joystick, 500ms
+motor failsafe, WiFi auto-reconnect, MJPEG stream auto-recovery,
+live connection indicator, full dark-theme UI rewrite, fixed
+duplicate id="speed" bug.</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">3df6eee</div>
+      <div class="msg">
+        <span class="subject">Initial import: keyestudio ESP32-CAM sketches</span>
+        <span class="body">Baseline, unmodified from the original Codes.zip upload
+(Blink, breathing light, motor, VideoCar).</span>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="dot"></span>Known limitations / open items</h2>
+  <div class="panel">
+    <p>Carried over from the original sketch, not yet addressed:</p>
+    <ul>
+      <li>No authentication on <code>/control</code>, <code>/joystick</code>, or
+        <code>/status</code> &mdash; anyone on the AP can drive the car. Default AP
+        password (<code>88888888</code>) is also weak.</li>
+      <li><code>CORS: Access-Control-Allow-Origin: *</code> means any page loaded in a
+        connected client's browser could issue commands.</li>
+      <li>Dead RGB888 fallback code in <code>capture_handler</code> (unreachable, since
+        the camera is always configured for JPEG).</li>
+    </ul>
+  </div>
+
+  <footer>
+    Generated from the working tree in <code>Codes/4_VideoCar</code>. Run
+    <code>git log -p</code> in the included repo for the full line-by-line diff.
+  </footer>
+
+</div>
+</body>
+</html>
