@@ -50,7 +50,13 @@ int maxconnection = 1;  // Only allow one device to connect
 void startCameraServer();
 
 void setup() {
-  // WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Prevent brownouts by silencing them. You probably want to keep this.
+  // Disable the brownout detector. Camera init draws a current spike that can
+  // sag voltage enough to false-trigger it on marginal power supplies -- this
+  // was shipped commented out in the original sketch, which is almost never
+  // what you want on an ESP32-CAM. This masks voltage *symptoms*, though; if
+  // you're still getting camera init failures, the real fix is a better 5V
+  // supply (see the troubleshooting notes above esp_camera_init below).
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   i2c_init();  //Initialize IIC, SDA is IO14, SCL is IO13, the pins are bound to the motor driver board and cannot be modified.
 
   Serial.begin(115200);
@@ -77,7 +83,6 @@ void setup() {
   config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   //init with high specs to pre-allocate larger buffers
   if (psramFound()) {
@@ -89,11 +94,35 @@ void setup() {
     config.jpeg_quality = 12;
     config.fb_count = 1;
   }
-  // camera init
+
+  // Camera init, with one retry at a lower XCLK. Some OV2640 clones don't
+  // reliably lock at 20MHz; dropping to 10MHz on the first failure resolves
+  // it without giving up entirely (a common real-world cause of the
+  // ESP_ERR_NOT_SUPPORTED / 0x106 error alongside a loose ribbon cable).
+  config.xclk_freq_hz = 20000000;
   esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {  //ESP_OK
-    Serial.printf("Camera init failed with error 0x%x", err);
-    return;
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed at 20MHz (0x%x), retrying at 10MHz...\n", err);
+    config.xclk_freq_hz = 10000000;
+    err = esp_camera_init(&config);
+  }
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed with error 0x%x\n", err);
+    Serial.println("Check: ribbon cable fully seated (contacts toward the PCB), a");
+    Serial.println("solid 5V/2A supply (not just the FTDI adapter's regulator), and");
+    Serial.println("that this is really an AI-Thinker-pinout board.");
+    // Blink the onboard LED in a distinct fast-triple-flash pattern forever,
+    // so a camera fault is visible even with no serial monitor attached.
+    pinMode(LED_GPIO_NUM, OUTPUT);
+    while (true) {
+      for (int i = 0; i < 3; i++) {
+        digitalWrite(LED_GPIO_NUM, HIGH);
+        delay(100);
+        digitalWrite(LED_GPIO_NUM, LOW);
+        delay(100);
+      }
+      delay(800);
+    }
   }
   //drop down frame size for higher initial frame rate
   sensor_t* s = esp_camera_sensor_get();
