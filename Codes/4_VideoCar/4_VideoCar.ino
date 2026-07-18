@@ -112,6 +112,7 @@ void setup() {
     Serial.println("password: " + (String)password);
     Serial.println("WiFi is Client Scout32");
     WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
       delay(500);
@@ -146,9 +147,33 @@ void setup() {
 
 int i = 0;
 
-void loop() {
-  // put your main code here, to run repeatedly:
-  delay(1000);
-  // Serial.printf("RSSi: %ld dBm\n",WiFi.RSSI());
+// If no movement command has been received for this long, assume the
+// connection was lost (WiFi drop, phone locked, browser tab closed, etc.)
+// and stop the car rather than let it keep driving unattended.
+#define CONTROL_TIMEOUT_MS 500
 
+// How often (ms) to retry WiFi.begin() when in station mode and disconnected.
+#define WIFI_RECONNECT_INTERVAL_MS 5000
+
+void loop() {
+  // --- Safety failsafe: stop the car if the client has gone quiet ---
+  if (actstate != stp && (millis() - lastCommandMillis > CONTROL_TIMEOUT_MS)) {
+    Car_stop();
+    actstate = stp;
+    Serial.println("Failsafe: no command received recently, stopping car");
+  }
+
+  // --- Station mode: watch the WiFi link and reconnect if it drops ---
+  if (!ap && WiFi.status() != WL_CONNECTED) {
+    static unsigned long lastReconnectAttempt = 0;
+    if (millis() - lastReconnectAttempt > WIFI_RECONNECT_INTERVAL_MS) {
+      Serial.println("WiFi disconnected, attempting to reconnect...");
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
+      lastReconnectAttempt = millis();
+    }
+  }
+
+  delay(50);
+  // Serial.printf("RSSi: %ld dBm\n",WiFi.RSSI());
 }
