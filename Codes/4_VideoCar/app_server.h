@@ -477,6 +477,12 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
             border-radius:50%;background:radial-gradient(circle at 35% 30%,#6FE9DD,var(--cyan) 60%,#2FA79B 100%);
             box-shadow:0 2px 8px rgba(76,224,210,.45);}
 
+          #capture-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+          #capture-row button{height:44px;}
+          #record-btn.active{background:var(--danger);border-color:var(--danger);color:var(--bg);}
+          #record-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.04em;min-height:14px;}
+          #record-status.active{color:var(--danger);}
+
           #dpad{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,56px);gap:6px;}
           #dpad button{grid-row:span 1;}
           button{display:block;width:100%;height:100%;border:1px solid var(--border);color:var(--text);
@@ -520,6 +526,15 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <div id="vf-tag">CAM-01</div>
         </div>
       </div>
+
+      <section class="panel">
+        <div class="panel-label">Capture</div>
+        <div id="capture-row">
+          <button id="snapshot-btn" onclick="takeSnapshot()">&#128247; Snapshot</button>
+          <button id="record-btn" onclick="toggleRecording()">&#9210; Record</button>
+        </div>
+        <div id="record-status"></div>
+      </section>
 
       <section class="panel">
         <div class="panel-label">Drive</div>
@@ -582,6 +597,124 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     setTimeout(startStream, 1000);
   });
   startStream();
+
+  // --- Snapshot & video recording ---
+  // Snapshot: pulls a single fresh JPEG from the existing /capture endpoint and
+  // downloads it. Video: since the ESP32 has neither the CPU headroom to encode
+  // video nor an SD card wired up in this sketch, recording happens entirely in
+  // the browser -- we repeatedly pull frames from /capture, draw them onto a
+  // hidden canvas, and use the Canvas+MediaRecorder APIs to encode a .webm file
+  // that gets saved locally when you stop. Quality/frame-rate is limited by how
+  // fast the ESP32 can serve JPEGs over WiFi, not by the recording code.
+  (function () {
+    var snapshotBtn = document.getElementById('snapshot-btn');
+    var recordBtn = document.getElementById('record-btn');
+    var statusEl = document.getElementById('record-status');
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    var recorder = null;
+    var chunks = [];
+    var pullTimer = null;
+    var startTime = 0;
+    var tickTimer = null;
+    var recording = false;
+
+    function timestamp() {
+      var d = new Date();
+      function p(n) { return (n < 10 ? '0' : '') + n; }
+      return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    }
+
+    function downloadBlob(blob, filename) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    }
+
+    window.takeSnapshot = function () {
+      fetch(document.location.origin + '/capture?_=' + Date.now())
+        .then(function (r) { return r.blob(); })
+        .then(function (blob) { downloadBlob(blob, 'videocar_' + timestamp() + '.jpg'); })
+        .catch(function () { statusEl.textContent = 'Snapshot failed -- check connection.'; });
+    };
+
+    function pickMimeType() {
+      var options = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+      for (var i = 0; i < options.length; i++) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported(options[i])) return options[i];
+      }
+      return null;
+    }
+
+    function pullFrame() {
+      fetch(document.location.origin + '/capture?_=' + Date.now())
+        .then(function (r) { return r.blob(); })
+        .then(function (blob) { return createImageBitmap(blob); })
+        .then(function (bitmap) {
+          if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+          }
+          ctx.drawImage(bitmap, 0, 0);
+        })
+        .catch(function () {});
+    }
+
+    window.toggleRecording = function () {
+      if (!recording) {
+        if (!window.MediaRecorder) {
+          statusEl.textContent = "This browser doesn't support video recording. Try Snapshot instead.";
+          return;
+        }
+        var mimeType = pickMimeType();
+        if (!mimeType) {
+          statusEl.textContent = "No supported video format on this browser. Try Snapshot instead.";
+          return;
+        }
+        chunks = [];
+        pullFrame();
+        var stream = canvas.captureStream(8);
+        try {
+          recorder = new MediaRecorder(stream, { mimeType: mimeType });
+        } catch (e) {
+          statusEl.textContent = 'Could not start recorder: ' + e.message;
+          return;
+        }
+        recorder.ondataavailable = function (e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
+        recorder.onstop = function () {
+          var blob = new Blob(chunks, { type: mimeType.split(';')[0] });
+          var ext = mimeType.indexOf('mp4') >= 0 ? '.mp4' : '.webm';
+          downloadBlob(blob, 'videocar_' + timestamp() + ext);
+        };
+        recorder.start();
+        pullTimer = window.setInterval(pullFrame, 150); // ~6-7 fps, matched to what the ESP32 can realistically serve
+        startTime = Date.now();
+        tickTimer = window.setInterval(function () {
+          var secs = Math.floor((Date.now() - startTime) / 1000);
+          statusEl.textContent = 'Recording... ' + secs + 's';
+        }, 500);
+        recording = true;
+        recordBtn.textContent = '\u23F9 Stop';
+        recordBtn.classList.add('active');
+        statusEl.classList.add('active');
+      } else {
+        window.clearInterval(pullTimer);
+        window.clearInterval(tickTimer);
+        if (recorder && recorder.state !== 'inactive') recorder.stop();
+        recording = false;
+        recordBtn.textContent = '\u23FA Record';
+        recordBtn.classList.remove('active');
+        statusEl.classList.remove('active');
+        statusEl.textContent = 'Saved.';
+      }
+    };
+  })();
+
   // Functions for Controls via Keypress
   var keyforward=0;
     var keybackward=0; 
