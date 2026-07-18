@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# VideoCar launcher -- check/install PlatformIO, build, flash, and monitor
+# the ESP32-CAM Video Car firmware.
+# ---------------------------------------------------------------------------
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FIRMWARE_DIR="$SCRIPT_DIR/firmware"
+
+# --- colors -----------------------------------------------------------------
+if [ -t 1 ]; then
+  C_RESET='\033[0m'; C_DIM='\033[2m'
+  C_CYAN='\033[36m'; C_AMBER='\033[33m'; C_RED='\033[31m'; C_GREEN='\033[32m'; C_BOLD='\033[1m'
+else
+  C_RESET=''; C_DIM=''; C_CYAN=''; C_AMBER=''; C_RED=''; C_GREEN=''; C_BOLD=''
+fi
+
+ok()    { echo -e "${C_GREEN}[OK]${C_RESET} $1"; }
+warn()  { echo -e "${C_AMBER}[!!]${C_RESET} $1"; }
+err()   { echo -e "${C_RED}[XX]${C_RESET} $1"; }
+info()  { echo -e "${C_CYAN}[--]${C_RESET} $1"; }
+
+banner() {
+  echo -e "${C_CYAN}${C_BOLD}"
+  echo "  ┌──────────────────────────────────────┐"
+  echo "  │   🚗  VIDEOCAR  --  PLATFORMIO LAUNCH  │"
+  echo "  └──────────────────────────────────────┘"
+  echo -e "${C_RESET}"
+}
+
+pause() { read -rp "$(echo -e "${C_DIM}Press Enter to continue...${C_RESET}")" _; }
+
+# --- pio discovery -----------------------------------------------------------
+PIO_BIN=""
+
+find_pio() {
+  if command -v pio >/dev/null 2>&1; then
+    PIO_BIN="$(command -v pio)"
+    return 0
+  fi
+  if [ -x "$HOME/.platformio/penv/bin/pio" ]; then
+    PIO_BIN="$HOME/.platformio/penv/bin/pio"
+    return 0
+  fi
+  PIO_BIN=""
+  return 1
+}
+
+pio_run() {
+  if ! find_pio; then
+    err "PlatformIO not found. Use option 2 (Install PlatformIO) first."
+    return 1
+  fi
+  "$PIO_BIN" "$@"
+}
+
+# --- menu actions -------------------------------------------------------------
+
+check_install() {
+  echo
+  info "Checking for prerequisites..."
+
+  if command -v python3 >/dev/null 2>&1; then
+    ok "python3 found: $(python3 --version 2>&1)"
+  else
+    err "python3 not found -- required to install/run PlatformIO."
+  fi
+
+  if command -v pip3 >/dev/null 2>&1; then
+    ok "pip3 found"
+  else
+    warn "pip3 not found (only needed for the pip install method)."
+  fi
+
+  if find_pio; then
+    ok "PlatformIO found at: $PIO_BIN"
+    "$PIO_BIN" --version
+  else
+    warn "PlatformIO not found. Use option 2 to install it."
+  fi
+
+  echo
+  if [ -f "$FIRMWARE_DIR/platformio.ini" ]; then
+    ok "Firmware project found: $FIRMWARE_DIR"
+  else
+    err "Firmware project missing platformio.ini at $FIRMWARE_DIR"
+  fi
+  pause
+}
+
+install_pio() {
+  echo
+  info "Installing PlatformIO Core..."
+  echo "  1) pip install (fast, needs python3 + pip3)"
+  echo "  2) official installer script (self-contained virtualenv)"
+  echo "  b) back"
+  read -rp "Choose an option: " choice
+  case "$choice" in
+    1)
+      if ! command -v pip3 >/dev/null 2>&1; then
+        err "pip3 not found. Install Python 3 + pip first, or use option 2."
+      else
+        pip3 install -U platformio && ok "Installed. You may need to restart your shell or add pip's bin dir to PATH."
+      fi
+      ;;
+    2)
+      if ! command -v python3 >/dev/null 2>&1; then
+        err "python3 not found. Install Python 3 first."
+      else
+        curl -fsSL -o /tmp/get-platformio.py \
+          https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py \
+          && python3 /tmp/get-platformio.py \
+          && ok "Installed to ~/.platformio. Add ~/.platformio/penv/bin to your PATH."
+      fi
+      ;;
+    b|B) return ;;
+    *) warn "Unrecognized option." ;;
+  esac
+  pause
+}
+
+build_firmware() {
+  echo
+  info "Building firmware (pio run)..."
+  pio_run run -d "$FIRMWARE_DIR" && ok "Build succeeded." || err "Build failed -- see output above."
+  pause
+}
+
+clean_firmware() {
+  echo
+  info "Cleaning build artifacts..."
+  pio_run run -t clean -d "$FIRMWARE_DIR" && ok "Cleaned."
+  pause
+}
+
+list_ports() {
+  echo
+  info "Detected serial devices:"
+  pio_run device list
+  pause
+}
+
+pick_port() {
+  # Prints nothing on failure/no-selection; sets $SELECTED_PORT
+  SELECTED_PORT=""
+  echo
+  info "Available serial ports:"
+  pio_run device list
+  echo
+  read -rp "Enter the port to use (e.g. /dev/ttyUSB0 or COM5), or leave blank for auto-detect: " SELECTED_PORT
+}
+
+flash_firmware() {
+  echo
+  warn "ESP32-CAM (AI-Thinker) boards flashed via a plain FTDI adapter usually"
+  warn "have no auto-reset circuit. If the upload hangs at 'Connecting....':"
+  warn "  1) Hold the IO0/BOOT button"
+  warn "  2) Tap RESET"
+  warn "  3) Release IO0 once you see 'Connecting....' actively retrying"
+  echo
+  pick_port
+  echo
+  info "Flashing firmware..."
+  if [ -n "$SELECTED_PORT" ]; then
+    pio_run run -t upload --upload-port "$SELECTED_PORT" -d "$FIRMWARE_DIR" && ok "Flash succeeded." || err "Flash failed -- see output above."
+  else
+    pio_run run -t upload -d "$FIRMWARE_DIR" && ok "Flash succeeded." || err "Flash failed -- see output above."
+  fi
+  pause
+}
+
+monitor_serial() {
+  echo
+  pick_port
+  echo
+  info "Opening serial monitor at 115200 baud. Press Ctrl+C to exit."
+  if [ -n "$SELECTED_PORT" ]; then
+    pio_run device monitor -b 115200 -p "$SELECTED_PORT"
+  else
+    pio_run device monitor -b 115200
+  fi
+}
+
+build_flash_monitor() {
+  build_firmware
+  flash_firmware
+  read -rp "Open serial monitor now? [y/N] " yn
+  case "$yn" in
+    y|Y) monitor_serial ;;
+    *) ;;
+  esac
+}
+
+main_menu() {
+  while true; do
+    clear 2>/dev/null || true
+    banner
+    echo "  Firmware: $FIRMWARE_DIR"
+    if find_pio; then
+      echo -e "  PlatformIO: ${C_GREEN}found${C_RESET} ($PIO_BIN)"
+    else
+      echo -e "  PlatformIO: ${C_RED}not found${C_RESET}"
+    fi
+    echo
+    echo "  1) Check installation"
+    echo "  2) Install PlatformIO"
+    echo "  3) Build firmware"
+    echo "  4) Flash firmware"
+    echo "  5) Build + Flash + Monitor"
+    echo "  6) Serial monitor"
+    echo "  7) List serial ports"
+    echo "  8) Clean build"
+    echo "  q) Quit"
+    echo
+    read -rp "Choose an option: " opt || { echo; info "Bye."; exit 0; }
+    case "$opt" in
+      1) check_install ;;
+      2) install_pio ;;
+      3) build_firmware ;;
+      4) flash_firmware ;;
+      5) build_flash_monitor ;;
+      6) monitor_serial ;;
+      7) list_ports ;;
+      8) clean_firmware ;;
+      q|Q) echo; info "Bye."; exit 0 ;;
+      *) warn "Unrecognized option." ; sleep 1 ;;
+    esac
+  done
+}
+
+main_menu
