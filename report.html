@@ -122,13 +122,20 @@
     <table>
       <tr><th>File</th><th>Change</th></tr>
       <tr><td class="mono">Codes/4_VideoCar/4_VideoCar.ino</td>
-          <td>Added failsafe + WiFi reconnect logic to <code>loop()</code></td></tr>
+          <td>Failsafe + WiFi reconnect logic in <code>loop()</code>; brownout
+              workaround enabled; camera init retry + LED error pattern</td></tr>
       <tr><td class="mono">Codes/4_VideoCar/app_server.h</td>
-          <td>New <code>/joystick</code> handler, heartbeat wiring, full HTML/CSS/JS
-              rewrite of the control page</td></tr>
+          <td><code>/joystick</code> handler, heartbeat wiring, full HTML/CSS/JS
+              rewrite of the control page, Capture panel (snapshot/record)</td></tr>
       <tr><td class="mono">Codes/4_VideoCar/SetMotor.h</td><td>Unchanged</td></tr>
       <tr><td class="mono">Codes/1_Blink, 2_breathing_light, 3_motor</td>
           <td>Unchanged &mdash; included for a complete package</td></tr>
+      <tr><td class="mono">firmware/</td>
+          <td>New &mdash; PlatformIO project mirroring <code>Codes/4_VideoCar</code></td></tr>
+      <tr><td class="mono">launch.sh</td>
+          <td>New &mdash; interactive install/build/flash/monitor menu</td></tr>
+      <tr><td class="mono">README.md</td>
+          <td>New &mdash; setup, build-system comparison, troubleshooting</td></tr>
     </table>
   </div>
 
@@ -136,6 +143,46 @@
   <div class="panel">
     <div class="commit">
       <div class="hash">HEAD</div>
+      <div class="msg">
+        <span class="subject">Add README.md; update report.html with the PlatformIO/PSRAM fix</span>
+        <span class="body">Documentation pass covering both build systems, feature
+summary, and troubleshooting for the camera/toolchain issue below.</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">971ef03</div>
+      <div class="msg">
+        <span class="subject">firmware: pin PlatformIO platform version and enable PSRAM build flags</span>
+        <span class="body">Fixes Camera init failed (0x106) under PlatformIO --
+see Resolved Issues above.</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">8665bf9</div>
+      <div class="msg">
+        <span class="subject">Fix camera brownout/init-failure resilience</span>
+        <span class="body">Enable brownout-detector workaround, retry camera init
+at 10MHz XCLK, blink a visible LED error pattern on persistent failure.</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">5fb8eef</div>
+      <div class="msg">
+        <span class="subject">Add PlatformIO build system + launch.sh menu (build/flash/monitor)</span>
+        <span class="body">firmware/ PlatformIO project targeting env:esp32cam,
+plus an interactive menu script for install/build/flash/monitor.</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">68807ec</div>
+      <div class="msg">
+        <span class="subject">VideoCar: add snapshot & client-side video recording controls</span>
+        <span class="body">Capture panel: Snapshot downloads a JPEG via /capture;
+Record encodes a .webm/.mp4 client-side via Canvas + MediaRecorder.</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">b4f3caa</div>
       <div class="msg">
         <span class="subject">Add report.html: change report summarizing joystick, failsafe, and UI redesign work</span>
         <span class="body">This document.</span>
@@ -159,6 +206,30 @@ duplicate id="speed" bug.</span>
 (Blink, breathing light, motor, VideoCar).</span>
       </div>
     </div>
+  </div>
+
+  <h2><span class="dot"></span>Resolved issues</h2>
+  <div class="panel">
+    <h3>Camera init failed (0x106) under PlatformIO only <span class="tag">fixed</span></h3>
+    <p>After moving the build to PlatformIO, <code>esp_camera_init()</code> started
+    failing with <code>ESP_ERR_NOT_SUPPORTED (0x106)</code> and, on marginal power
+    supplies, a reset loop right after -- while the identical hardware kept working
+    fine when flashed from Arduino IDE. That pointed at the build toolchain rather
+    than the board.</p>
+    <p><strong>Root cause:</strong> PlatformIO's generic <code>esp32cam</code> board
+    definition doesn't set the <code>BOARD_HAS_PSRAM</code> /
+    <code>-mfix-esp32-psram-cache-issue</code> build flags that Arduino IDE's
+    <code>Tools&nbsp;&gt;&nbsp;PSRAM: Enabled</code> menu sets implicitly, and the
+    platform was left unpinned (floating on "latest" rather than a version close to
+    whatever Arduino IDE's Boards Manager had installed).</p>
+    <p><strong>Fix</strong> (<code>firmware/platformio.ini</code>): pinned
+    <code>platform = espressif32@6.5.0</code> and added
+    <code>-DBOARD_HAS_PSRAM</code> / <code>-mfix-esp32-psram-cache-issue</code> to
+    <code>build_flags</code>. Confirmed working after reflashing. Also hardened
+    <code>4_VideoCar.ino</code> independently of the toolchain fix: retries camera
+    init at 10MHz XCLK before giving up, enables the brownout-detector workaround
+    (was shipped commented out), and blinks a visible LED error pattern on
+    persistent failure instead of silently returning.</p>
   </div>
 
   <h2><span class="dot"></span>Known limitations / open items</h2>

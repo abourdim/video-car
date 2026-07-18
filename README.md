@@ -1,0 +1,137 @@
+# 🚗 VideoCar
+
+Enhanced firmware + web control page for the keyestudio ESP32-CAM Video Smart
+Car. Built on top of keyestudio's stock sketch, with a virtual joystick,
+connection-loss failsafe, snapshot/video capture, a redesigned control UI, and
+a PlatformIO build system alongside the original Arduino IDE sketch.
+
+<img src="preview_full.png" width="360" alt="Control page screenshot">
+
+## Quick start
+
+**Arduino IDE** (known-good baseline): open `Codes/4_VideoCar/4_VideoCar.ino`,
+select your `esp32` board package version under `Tools > Board > Boards
+Manager`, enable `Tools > PSRAM: Enabled`, select the AI-Thinker ESP32-CAM
+board, and flash as usual.
+
+**PlatformIO**:
+```
+./launch.sh
+```
+Walks you through checking/installing PlatformIO, building, flashing, and
+opening a serial monitor. See [Build systems](#build-systems) below for what
+each menu option does.
+
+Once flashed, connect to the `keyes1` WiFi network (password `88888888`) and
+open `http://192.168.4.1` in a browser.
+
+## Features (vs. the stock keyestudio sketch)
+
+- **Joystick control** — draggable on-screen joystick (`/joystick?x=&y=`),
+  arcade-mixed to per-wheel PWM, alongside the original D-pad/keyboard
+  controls.
+- **Connection-loss failsafe** — the car auto-stops if no command is received
+  for 500ms (WiFi drop, phone locked, tab closed, etc.), instead of driving
+  on unattended. WiFi auto-reconnect in station mode, MJPEG stream
+  auto-recovery, and a live connection indicator.
+- **Snapshot & video recording** — a Capture panel downloads a still JPEG, or
+  records a `.webm`/`.mp4` client-side (Canvas + MediaRecorder pulling frames
+  from `/capture`) since the ESP32 itself can't encode video or write to an
+  SD card in this sketch.
+- **Redesigned control page** — dark mission-control / camera-viewfinder HUD
+  theme, grouped panels, live slider value readouts, responsive layout.
+- **Camera init resilience** — retries at a lower XCLK before giving up,
+  blinks a visible LED error pattern instead of silently failing, and enables
+  the brownout-detector workaround that shipped commented out in the
+  original sketch.
+
+Full change-by-change writeup: [`report.html`](report.html).
+
+## Repository layout
+
+```
+Codes/                  Original Arduino-IDE-style sketch layout (all 4 sketches)
+  4_VideoCar/            The enhanced sketch -- flash this one from Arduino IDE
+firmware/                PlatformIO project (mirrors Codes/4_VideoCar)
+  platformio.ini
+  src/
+launch.sh                Interactive PlatformIO menu (see below)
+report.html               Detailed change report
+```
+
+`Codes/4_VideoCar` and `firmware/src` are kept in sync -- same source, two
+build systems. If you edit one, mirror the change into the other.
+
+## Build systems
+
+### PlatformIO (`firmware/`)
+
+`firmware/platformio.ini` targets `env:esp32cam` (AI-Thinker pinout):
+
+| Setting | Value | Why |
+|---|---|---|
+| `platform` | `espressif32@6.5.0` | Pinned, not left on "latest" -- an unpinned platform can silently pull a different `esp32-camera` driver version than what Arduino IDE has installed, which changes camera sensor-probe behavior. `6.5.0` (arduino-esp32 2.0.14) is the version this project is confirmed working against. |
+| `board_build.partitions` | `huge_app.csv` | The camera+WiFi+webserver binary doesn't fit the default partition table. Same as picking "Huge APP (3MB No OTA/1MB SPIFFS)" in Arduino IDE. |
+| `build_flags` | `-DBOARD_HAS_PSRAM`, `-mfix-esp32-psram-cache-issue` | Arduino IDE's `Tools > PSRAM: Enabled` menu sets these behind the scenes; PlatformIO's generic `esp32cam` board definition does not, even though the board has PSRAM. **This was the actual root cause of "works in Arduino IDE, camera fails in PlatformIO" (`Camera init failed with error 0x106`)** -- see [Troubleshooting](#troubleshooting). |
+| `upload_speed` | `460800` | Safer default than 921600 for boards flashed through a bare FTDI adapter with no auto-reset circuit. |
+
+`launch.sh` menu:
+
+```
+1) Check installation      5) Build + Flash + Monitor
+2) Install PlatformIO      6) Serial monitor
+3) Build firmware          7) List serial ports
+4) Flash firmware          8) Clean build
+```
+
+Option 4 (Flash) prints the IO0/BOOT-button reminder most bare ESP32-CAM
+programmers need: hold IO0, tap RESET, release IO0 once "Connecting...." is
+actively retrying.
+
+If you change `platformio.ini` (e.g. re-pinning the platform version), run
+option 8 (Clean) before rebuilding so a stale `.pio/` cache doesn't mask the
+change.
+
+### Arduino IDE (`Codes/4_VideoCar/`)
+
+Standard Arduino IDE flow. Make sure `Tools > PSRAM` is set to `Enabled` and
+`Tools > Partition Scheme` is set to a scheme with enough app space (e.g.
+"Huge APP (3MB No OTA/1MB SPIFFS)").
+
+## Troubleshooting
+
+**`Camera init failed with error 0x106` (only under PlatformIO, works fine in
+Arduino IDE):** This is `ESP_ERR_NOT_SUPPORTED` from the camera sensor probe.
+If the same board works in Arduino IDE, it's a toolchain/build-flag mismatch,
+not hardware -- see the PSRAM/platform-pinning notes in the table above. This
+project's `platformio.ini` is already configured to avoid it; if you still
+hit it, run `./launch.sh` option 8 (Clean) to clear any stale build cache,
+and confirm your Arduino IDE's installed `esp32` core version (`Tools > Board
+> Boards Manager`) roughly matches the pinned PlatformIO platform version --
+if it's wildly different, re-pin `platform = espressif32@X.Y.Z` to match.
+
+**Repeated resets right after a camera error:** Usually a marginal power
+supply -- camera + WiFi init draws a current spike many FTDI adapters can't
+supply cleanly. Use a proper 5V/2A source. The sketch already enables the
+brownout-detector workaround, which will surface this as a clean retry/error
+message instead of a silent reboot loop, but it doesn't fix underlying
+undervoltage.
+
+**Car doesn't stop when you close the browser tab / lose WiFi:** Shouldn't
+happen -- the firmware failsafe stops the motors after 500ms without a
+command. If you're seeing otherwise, confirm you're running the version from
+this repo (`git log --oneline`) and not stock keyestudio firmware, which has
+no such failsafe.
+
+**No authentication on the control endpoints:** Known, unaddressed
+limitation carried over from the original sketch -- see `report.html` for
+details. Anyone on the `keyes1` WiFi network (default password `88888888`)
+can drive the car.
+
+## Git history
+
+```
+git log --oneline
+```
+Each commit is a self-contained feature/fix; `git log -p` gives the full
+line-by-line diff against the original keyestudio sketch at any point.
