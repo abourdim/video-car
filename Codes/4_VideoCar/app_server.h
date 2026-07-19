@@ -541,7 +541,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         <div id="capture-row">
           <button id="vision-btn" onclick="toggleVision()">&#129302; AI Vision</button>
         </div>
-        <div id="vision-status">Runs in your browser (TensorFlow.js) &mdash; needs internet on this network to load the model once.</div>
+        <div id="vision-status">Runs in your browser (TensorFlow.js) &mdash; detects objects (cyan) and faces (amber). Needs internet on this network to load the models once.</div>
       </section>
 
       <section class="panel">
@@ -736,7 +736,11 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     };
   })();
 
-  // --- AI Vision: client-side object detection ---
+  // --- AI Vision: client-side object + face detection ---
+  // Two models: COCO-SSD for whole-object categories (person, dog, chair,
+  // ...) and BlazeFace specifically for faces/heads, since COCO-SSD has no
+  // "head" or "face" class -- its closest category is "person", trained
+  // mostly on full-body shots, which handles close-up faces poorly.
   // Runs entirely in the browser via TensorFlow.js + the COCO-SSD model,
   // since the ESP32 itself has nowhere near enough headroom to run a neural
   // net alongside the camera/WiFi/webserver. The model (~a few MB) loads
@@ -755,7 +759,9 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     var octx = overlay.getContext('2d');
     var workCanvas = document.createElement('canvas');
     var wctx = workCanvas.getContext('2d');
-    var model = null;
+    var objectModel = null;   // coco-ssd: whole-object categories (person, dog, chair, ...)
+    var faceModel = null;     // blazeface: purpose-built for faces/heads, which coco-ssd
+                               // has no class for and handles poorly at close range
     var running = false;
     var loopTimer = null;
     var scriptsLoaded = false;
@@ -772,9 +778,14 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
     function ensureScripts() {
       if (scriptsLoaded) return Promise.resolve();
-      statusEl.textContent = 'Loading AI model (needs internet on this network)...';
+      statusEl.textContent = 'Loading AI models (needs internet on this network)...';
       return loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js')
-        .then(function () { return loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js'); })
+        .then(function () {
+          return Promise.all([
+            loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js'),
+            loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0/dist/blazeface.min.js')
+          ]);
+        })
         .then(function () { scriptsLoaded = true; });
     }
 
@@ -784,7 +795,17 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       overlay.height = vf.clientHeight;
     }
 
-    function drawDetections(predictions, srcW, srcH) {
+    function drawBox(x, y, w, h, color, label) {
+      octx.strokeStyle = color;
+      octx.strokeRect(x, y, w, h);
+      var textW = octx.measureText(label).width + 8;
+      octx.fillStyle = color;
+      octx.fillRect(x, Math.max(0, y - 16), textW, 16);
+      octx.fillStyle = '#0B0F14';
+      octx.fillText(label, x + 4, Math.max(0, y - 15));
+    }
+
+    function drawDetections(objects, faces, srcW, srcH) {
       resizeOverlay();
       var scaleX = overlay.width / srcW;
       var scaleY = overlay.height / srcH;
@@ -792,17 +813,19 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       octx.lineWidth = 2;
       octx.font = '12px ui-monospace, monospace';
       octx.textBaseline = 'top';
-      predictions.forEach(function (p) {
+
+      objects.forEach(function (p) {
         var x = p.bbox[0] * scaleX, y = p.bbox[1] * scaleY;
         var w = p.bbox[2] * scaleX, h = p.bbox[3] * scaleY;
-        octx.strokeStyle = '#4CE0D2';
-        octx.strokeRect(x, y, w, h);
-        var label = p.class + ' ' + Math.round(p.score * 100) + '%';
-        var textW = octx.measureText(label).width + 8;
-        octx.fillStyle = '#4CE0D2';
-        octx.fillRect(x, Math.max(0, y - 16), textW, 16);
-        octx.fillStyle = '#0B0F14';
-        octx.fillText(label, x + 4, Math.max(0, y - 15));
+        drawBox(x, y, w, h, '#4CE0D2', p.class + ' ' + Math.round(p.score * 100) + '%');
+      });
+
+      faces.forEach(function (f) {
+        var x = f.topLeft[0] * scaleX, y = f.topLeft[1] * scaleY;
+        var w = (f.bottomRight[0] - f.topLeft[0]) * scaleX;
+        var h = (f.bottomRight[1] - f.topLeft[1]) * scaleY;
+        var prob = Array.isArray(f.probability) ? f.probability[0] : f.probability;
+        drawBox(x, y, w, h, '#FFB454', 'face ' + Math.round(prob * 100) + '%');
       });
     }
 
@@ -816,14 +839,18 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
             workCanvas.height = bitmap.height;
           }
           wctx.drawImage(bitmap, 0, 0);
-          return model.detect(workCanvas);
+          return Promise.all([
+            objectModel.detect(workCanvas),
+            faceModel.estimateFaces(workCanvas, false)
+          ]);
         })
-        .then(function (predictions) {
+        .then(function (results) {
           if (!running) return;
-          drawDetections(predictions, workCanvas.width, workCanvas.height);
-          statusEl.textContent = predictions.length
-            ? ('Sees: ' + predictions.map(function (p) { return p.class; }).join(', '))
-            : 'Watching... nothing recognized yet.';
+          var objects = results[0], faces = results[1];
+          drawDetections(objects, faces, workCanvas.width, workCanvas.height);
+          var seen = objects.map(function (p) { return p.class; });
+          if (faces.length) seen.push(faces.length === 1 ? 'a face' : (faces.length + ' faces'));
+          statusEl.textContent = seen.length ? ('Sees: ' + seen.join(', ')) : 'Watching... nothing recognized yet.';
         })
         .catch(function () { /* transient network hiccup -- next tick retries */ });
     }
@@ -833,9 +860,12 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         visionBtn.disabled = true;
         ensureScripts()
           .then(function () {
-            if (model) return;
-            statusEl.textContent = 'Warming up the model...';
-            return cocoSsd.load().then(function (m) { model = m; });
+            if (objectModel && faceModel) return;
+            statusEl.textContent = 'Warming up the models...';
+            return Promise.all([
+              cocoSsd.load().then(function (m) { objectModel = m; }),
+              blazeface.load().then(function (m) { faceModel = m; })
+            ]);
           })
           .then(function () {
             running = true;
@@ -847,7 +877,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           })
           .catch(function (e) {
             visionBtn.disabled = false;
-            statusEl.textContent = "Couldn't load the AI model -- check this network has internet (won't work while only joined to the car's own WiFi with no internet uplink). " + e.message;
+            statusEl.textContent = "Couldn't load the AI models -- check this network has internet (won't work while only joined to the car's own WiFi with no internet uplink). " + e.message;
           });
       } else {
         running = false;
