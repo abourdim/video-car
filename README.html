@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VideoCar — README</title>
+<style>
+  :root{
+    --bg:#0B0F14; --panel:#121822; --panel-2:#0E141C; --border:#1F2B38;
+    --cyan:#4CE0D2; --amber:#FFB454; --danger:#FF5C5C;
+    --text:#E7F1F2; --muted:#7C93A0;
+    --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);
+    line-height:1.6;padding:0 0 60px;}
+  .wrap{max-width:780px;margin:0 auto;padding:0 20px;}
+  header{padding:36px 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px;}
+  header h1{margin:0 0 10px;font-size:24px;letter-spacing:.04em;}
+  header h1 span{color:var(--amber);}
+  .tagline{color:var(--muted);font-size:13.5px;max-width:620px;}
+  .tutorial-link{display:inline-block;margin-top:14px;font-size:13px;color:var(--cyan);
+    text-decoration:none;border-bottom:1px dotted var(--cyan);padding-bottom:1px;}
+  .tutorial-link:hover{color:var(--amber);border-bottom-color:var(--amber);}
+  .hero{width:100%;max-width:360px;border-radius:8px;border:1px solid var(--border);
+    display:block;margin:20px 0 0;}
+  h2{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:40px 0 14px;display:flex;align-items:center;gap:8px;}
+  h2::after{content:"";flex:1;height:1px;background:var(--border);}
+  h3{font-size:14px;color:var(--cyan);margin:24px 0 8px;}
+  p{font-size:13.5px;margin:0 0 12px;}
+  a{color:var(--cyan);}
+  code{font-family:var(--mono);color:var(--amber);background:var(--panel-2);
+    padding:1px 5px;border-radius:4px;font-size:.92em;}
+  pre{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.55;}
+  pre code{background:none;padding:0;color:var(--text);}
+  ul{margin:8px 0 12px;padding-left:20px;font-size:13.5px;}
+  li{margin:6px 0;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin:10px 0 4px;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+  th{color:var(--muted);font-weight:400;letter-spacing:.06em;text-transform:uppercase;font-size:10.5px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    padding:16px 20px;margin-bottom:16px;}
+  .note{border-left:3px solid var(--amber);padding:10px 14px;background:var(--panel);
+    border-radius:0 8px 8px 0;font-size:13px;margin:14px 0;}
+  footer{margin-top:50px;padding-top:20px;border-top:1px solid var(--border);
+    font-size:11.5px;color:var(--muted);}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cyan);
+    box-shadow:0 0 6px var(--cyan);margin-right:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>&#128663; VIDEO<span>CAR</span></h1>
+    <p class="tagline">Enhanced firmware + web control page for the keyestudio ESP32-CAM
+    Video Smart Car. Built on top of keyestudio's stock sketch, with a virtual joystick,
+    connection-loss failsafe, snapshot/video capture, a redesigned control UI, and a
+    PlatformIO build system alongside the original Arduino IDE sketch.</p>
+    <a class="tutorial-link" href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" target="_blank" rel="noopener">
+      &#128214; Official hardware/assembly tutorial (docs.keyestudio.com/projects/KS5017)
+    </a><br>
+    <img class="hero" src="preview_full.png" alt="Control page screenshot">
+  </header>
+
+  <h2><span class="dot"></span>Quick start</h2>
+  <div class="panel">
+    <p><strong>Arduino IDE</strong> (known-good baseline): open
+    <code>Codes/4_VideoCar/4_VideoCar.ino</code>, select your <code>esp32</code> board
+    package version under <code>Tools &gt; Board &gt; Boards Manager</code>, enable
+    <code>Tools &gt; PSRAM: Enabled</code>, select the AI-Thinker ESP32-CAM board, and
+    flash as usual.</p>
+    <p><strong>PlatformIO</strong>:</p>
+    <pre><code>./launch.sh</code></pre>
+    <p>Walks you through checking/installing PlatformIO, building, flashing, and opening
+    a serial monitor. See <a href="#build-systems">Build systems</a> below for what each
+    menu option does.</p>
+    <p>Once flashed, connect to the <code>keyes1</code> WiFi network (password
+    <code>88888888</code>) and open <code>http://192.168.4.1</code> in a browser.</p>
+  </div>
+
+  <h2><span class="dot"></span>Features vs. the stock keyestudio sketch</h2>
+  <div class="panel">
+    <ul>
+      <li><strong>Joystick control</strong> &mdash; draggable on-screen joystick
+        (<code>/joystick?x=&amp;y=</code>), arcade-mixed to per-wheel PWM, alongside the
+        original D-pad/keyboard controls.</li>
+      <li><strong>Connection-loss failsafe</strong> &mdash; the car auto-stops if no
+        command is received for 500ms (WiFi drop, phone locked, tab closed, etc.),
+        instead of driving on unattended. WiFi auto-reconnect in station mode, MJPEG
+        stream auto-recovery, and a live connection indicator.</li>
+      <li><strong>Snapshot &amp; video recording</strong> &mdash; a Capture panel
+        downloads a still JPEG, or records a <code>.webm</code>/<code>.mp4</code>
+        client-side (Canvas + MediaRecorder pulling frames from <code>/capture</code>)
+        since the ESP32 itself can't encode video or write to an SD card in this
+        sketch.</li>
+      <li><strong>Redesigned control page</strong> &mdash; dark mission-control /
+        camera-viewfinder HUD theme, grouped panels, live slider value readouts,
+        responsive layout.</li>
+      <li><strong>Camera init resilience</strong> &mdash; retries at a lower XCLK before
+        giving up, blinks a visible LED error pattern instead of silently failing, and
+        enables the brownout-detector workaround that shipped commented out in the
+        original sketch.</li>
+    </ul>
+    <p>Full change-by-change writeup: <a href="report.html">report.html</a>.</p>
+  </div>
+
+  <h2><span class="dot"></span>Repository layout</h2>
+  <div class="panel">
+    <pre><code>Codes/                  Original Arduino-IDE-style sketch layout (all 4 sketches)
+  4_VideoCar/            The enhanced sketch -- flash this one from Arduino IDE
+firmware/                PlatformIO projects, one per sketch
+  1_blink/                Onboard LED blink demo
+  2_breathing_light/      PWM LED fade demo
+  3_motor/                Motor driver test sequence (drives on boot -- give it room!)
+  4_videocar/              Mirrors Codes/4_VideoCar -- the main project
+launch.sh                Interactive PlatformIO menu, lets you pick which app to build/flash/monitor
+report.html               Detailed change report
+README.html               This document</code></pre>
+    <p><code>Codes/4_VideoCar</code> and <code>firmware/4_videocar/src</code> are kept in
+    sync &mdash; same source, two build systems. If you edit one, mirror the change into
+    the other. The other three sketches (<code>1_blink</code>, <code>2_breathing_light</code>,
+    <code>3_motor</code>) only exist as Arduino sketches under <code>Codes/</code> and as
+    PlatformIO projects under <code>firmware/</code> &mdash; no enhancements have been made
+    to those, they're simple demos included for a complete workshop package.</p>
+  </div>
+
+  <h2 id="build-systems"><span class="dot"></span>Build systems</h2>
+
+  <div class="panel">
+    <h3>PlatformIO (firmware/)</h3>
+    <p>Each sketch is its own PlatformIO project under <code>firmware/&lt;name&gt;/</code>,
+    all targeting <code>env:esp32cam</code> (AI-Thinker pinout) since it's the same
+    physical board for all four:</p>
+    <table>
+      <tr><th>App</th><th>Notes</th></tr>
+      <tr><td class="mono"><code>1_blink</code></td><td>Trivial LED blink, no special config needed.</td></tr>
+      <tr><td class="mono"><code>2_breathing_light</code></td><td>PWM LED fade, no special config needed.</td></tr>
+      <tr><td class="mono"><code>3_motor</code></td><td>Drives forward/back/left/right immediately on boot/reset &mdash; <strong>give the car room to move</strong> before flashing or resetting it.</td></tr>
+      <tr><td class="mono"><code>4_videocar</code></td><td>The main project &mdash; see the table below for why its <code>platformio.ini</code> has extra settings the other three don't need.</td></tr>
+    </table>
+
+    <p style="margin-top:18px;"><code>firmware/4_videocar/platformio.ini</code>:</p>
+    <table>
+      <tr><th>Setting</th><th>Value</th><th>Why</th></tr>
+      <tr>
+        <td><code>platform</code></td>
+        <td><code>espressif32@6.5.0</code></td>
+        <td>Pinned, not left on "latest" &mdash; an unpinned platform can silently pull a
+        different <code>esp32-camera</code> driver version than what Arduino IDE has
+        installed, which changes camera sensor-probe behavior. <code>6.5.0</code>
+        (arduino-esp32 2.0.14) is the version this project is confirmed working against.
+        The other three apps are pinned to the same version too, for consistency, even
+        though they're too simple to be sensitive to it.</td>
+      </tr>
+      <tr>
+        <td><code>board_build.partitions</code></td>
+        <td><code>huge_app.csv</code></td>
+        <td>The camera+WiFi+webserver binary doesn't fit the default partition table.
+        Same as picking "Huge APP (3MB No OTA/1MB SPIFFS)" in Arduino IDE.</td>
+      </tr>
+      <tr>
+        <td><code>build_flags</code></td>
+        <td><code>-DBOARD_HAS_PSRAM</code>,<br><code>-mfix-esp32-psram-cache-issue</code></td>
+        <td>Arduino IDE's <code>Tools &gt; PSRAM: Enabled</code> menu sets these behind
+        the scenes; PlatformIO's generic <code>esp32cam</code> board definition does not,
+        even though the board has PSRAM. <strong>This was the actual root cause of
+        "works in Arduino IDE, camera fails in PlatformIO" (<code>Camera init failed
+        with error 0x106</code>)</strong> &mdash; see <a href="#troubleshooting">Troubleshooting</a>.</td>
+      </tr>
+      <tr>
+        <td><code>upload_speed</code></td>
+        <td><code>460800</code></td>
+        <td>Safer default than 921600 for boards flashed through a bare FTDI adapter
+        with no auto-reset circuit.</td>
+      </tr>
+    </table>
+
+    <p style="margin-top:18px;"><code>launch.sh</code> menu:</p>
+    <pre><code>0) Select app               5) Build + Flash + Monitor
+1) Check installation       6) Serial monitor
+2) Install PlatformIO       7) List serial ports
+3) Build firmware           8) Clean build
+4) Flash firmware</code></pre>
+    <p>It prompts for which app to work with on startup (auto-discovers any
+    <code>firmware/&lt;name&gt;/platformio.ini</code>), and option 0 switches apps at any
+    time without restarting the script. Option 4 (Flash) prints the IO0/BOOT-button
+    reminder most bare ESP32-CAM programmers need: hold IO0, tap RESET, release IO0 once
+    "Connecting...." is actively retrying &mdash; and an extra warning for
+    <code>3_motor</code> about giving the car room to move.</p>
+    <div class="note">If you change a <code>platformio.ini</code> (e.g. re-pinning the
+    platform version), run option 8 (Clean) before rebuilding so a stale
+    <code>.pio/</code> cache doesn't mask the change.</div>
+
+    <h3>Arduino IDE (Codes/4_VideoCar/)</h3>
+    <p>Standard Arduino IDE flow. Make sure <code>Tools &gt; PSRAM</code> is set to
+    <code>Enabled</code> and <code>Tools &gt; Partition Scheme</code> is set to a scheme
+    with enough app space (e.g. "Huge APP (3MB No OTA/1MB SPIFFS)").</p>
+  </div>
+
+  <h2 id="troubleshooting"><span class="dot"></span>Troubleshooting</h2>
+  <div class="panel">
+    <p>See also the official tutorial's own
+    <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html#common-problems" target="_blank" rel="noopener">Common Problems</a>
+    section (wrong board selection, IP/WiFi connection issues, battery/charging) for
+    issues unrelated to this repo's changes.</p>
+
+    <h3>Camera init failed with error 0x106 (only under PlatformIO, works fine in Arduino IDE)</h3>
+    <p>This is <code>ESP_ERR_NOT_SUPPORTED</code> from the camera sensor probe. If the
+    same board works in Arduino IDE, it's a toolchain/build-flag mismatch, not hardware
+    &mdash; see the PSRAM/platform-pinning notes above. This project's
+    <code>platformio.ini</code> is already configured to avoid it; if you still hit it,
+    run <code>./launch.sh</code> option 8 (Clean) to clear any stale build cache, and
+    confirm your Arduino IDE's installed <code>esp32</code> core version
+    (<code>Tools &gt; Board &gt; Boards Manager</code>) roughly matches the pinned
+    PlatformIO platform version &mdash; if it's wildly different, re-pin
+    <code>platform = espressif32@X.Y.Z</code> to match.</p>
+
+    <h3>Repeated resets right after a camera error</h3>
+    <p>Usually a marginal power supply &mdash; camera + WiFi init draws a current spike
+    many FTDI adapters can't supply cleanly. Use a proper 5V/2A source. The sketch
+    already enables the brownout-detector workaround, which will surface this as a clean
+    retry/error message instead of a silent reboot loop, but it doesn't fix underlying
+    undervoltage.</p>
+
+    <h3>Car doesn't stop when you close the browser tab / lose WiFi</h3>
+    <p>Shouldn't happen &mdash; the firmware failsafe stops the motors after 500ms
+    without a command. If you're seeing otherwise, confirm you're running the version
+    from this repo (<code>git log --oneline</code>) and not stock keyestudio firmware,
+    which has no such failsafe.</p>
+
+    <h3>No authentication on the control endpoints</h3>
+    <p>Known, unaddressed limitation carried over from the original sketch &mdash; see
+    <a href="report.html">report.html</a> for details. Anyone on the <code>keyes1</code>
+    WiFi network (default password <code>88888888</code>) can drive the car.</p>
+  </div>
+
+  <h2><span class="dot"></span>Git history</h2>
+  <div class="panel">
+    <pre><code>git log --oneline</code></pre>
+    <p>Each commit is a self-contained feature/fix; <code>git log -p</code> gives the
+    full line-by-line diff against the original keyestudio sketch at any point.</p>
+  </div>
+
+  <footer>
+    Rendered from <code>README.md</code> at the repo root &mdash; that file is the
+    source of truth; this is a formatted copy for easier reading in a browser.
+  </footer>
+
+</div>
+</body>
+</html>
