@@ -783,7 +783,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         .then(function () {
           return Promise.all([
             loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js'),
-            loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0/dist/blazeface.min.js')
+            loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0')
           ]);
         })
         .then(function () { scriptsLoaded = true; });
