@@ -1,5 +1,5 @@
-# PlatformIO build artifacts
-firmware/.pio/
-firmware/.vscode/
+# PlatformIO build artifacts (one per app under firmware/<name>/)
+firmware/*/.pio/
+firmware/*/.vscode/
 *.pyc
 __pycache__/

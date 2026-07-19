@@ -52,25 +52,42 @@ Full change-by-change writeup: [`report.html`](report.html).
 ```
 Codes/                  Original Arduino-IDE-style sketch layout (all 4 sketches)
   4_VideoCar/            The enhanced sketch -- flash this one from Arduino IDE
-firmware/                PlatformIO project (mirrors Codes/4_VideoCar)
-  platformio.ini
-  src/
-launch.sh                Interactive PlatformIO menu (see below)
+firmware/                PlatformIO projects, one per sketch
+  1_blink/                Onboard LED blink demo
+  2_breathing_light/      PWM LED fade demo
+  3_motor/                Motor driver test sequence (drives on boot -- give it room!)
+  4_videocar/              Mirrors Codes/4_VideoCar -- the main project
+launch.sh                Interactive PlatformIO menu, lets you pick which app to build/flash/monitor
 report.html               Detailed change report
 ```
 
-`Codes/4_VideoCar` and `firmware/src` are kept in sync -- same source, two
-build systems. If you edit one, mirror the change into the other.
+`Codes/4_VideoCar` and `firmware/4_videocar/src` are kept in sync -- same
+source, two build systems. If you edit one, mirror the change into the other.
+The other three sketches (`1_blink`, `2_breathing_light`, `3_motor`) only
+exist as Arduino sketches under `Codes/` and as PlatformIO projects under
+`firmware/` -- no enhancements have been made to those, they're simple demos
+included for a complete workshop package.
 
 ## Build systems
 
 ### PlatformIO (`firmware/`)
 
-`firmware/platformio.ini` targets `env:esp32cam` (AI-Thinker pinout):
+Each sketch is its own PlatformIO project under `firmware/<name>/`, all
+targeting `env:esp32cam` (AI-Thinker pinout) since it's the same physical
+board for all four:
+
+| App | Notes |
+|---|---|
+| `1_blink` | Trivial LED blink, no special config needed. |
+| `2_breathing_light` | PWM LED fade, no special config needed. |
+| `3_motor` | Drives forward/back/left/right immediately on boot/reset -- **give the car room to move** before flashing or resetting it. |
+| `4_videocar` | The main project -- see the table below for why its `platformio.ini` has extra settings the other three don't need. |
+
+`firmware/4_videocar/platformio.ini`:
 
 | Setting | Value | Why |
 |---|---|---|
-| `platform` | `espressif32@6.5.0` | Pinned, not left on "latest" -- an unpinned platform can silently pull a different `esp32-camera` driver version than what Arduino IDE has installed, which changes camera sensor-probe behavior. `6.5.0` (arduino-esp32 2.0.14) is the version this project is confirmed working against. |
+| `platform` | `espressif32@6.5.0` | Pinned, not left on "latest" -- an unpinned platform can silently pull a different `esp32-camera` driver version than what Arduino IDE has installed, which changes camera sensor-probe behavior. `6.5.0` (arduino-esp32 2.0.14) is the version this project is confirmed working against. The other three apps are pinned to the same version too, for consistency, even though they're too simple to be sensitive to it. |
 | `board_build.partitions` | `huge_app.csv` | The camera+WiFi+webserver binary doesn't fit the default partition table. Same as picking "Huge APP (3MB No OTA/1MB SPIFFS)" in Arduino IDE. |
 | `build_flags` | `-DBOARD_HAS_PSRAM`, `-mfix-esp32-psram-cache-issue` | Arduino IDE's `Tools > PSRAM: Enabled` menu sets these behind the scenes; PlatformIO's generic `esp32cam` board definition does not, even though the board has PSRAM. **This was the actual root cause of "works in Arduino IDE, camera fails in PlatformIO" (`Camera init failed with error 0x106`)** -- see [Troubleshooting](#troubleshooting). |
 | `upload_speed` | `460800` | Safer default than 921600 for boards flashed through a bare FTDI adapter with no auto-reset circuit. |
@@ -78,17 +95,21 @@ build systems. If you edit one, mirror the change into the other.
 `launch.sh` menu:
 
 ```
-1) Check installation      5) Build + Flash + Monitor
-2) Install PlatformIO      6) Serial monitor
-3) Build firmware          7) List serial ports
-4) Flash firmware          8) Clean build
+0) Select app               5) Build + Flash + Monitor
+1) Check installation       6) Serial monitor
+2) Install PlatformIO       7) List serial ports
+3) Build firmware           8) Clean build
+4) Flash firmware
 ```
 
-Option 4 (Flash) prints the IO0/BOOT-button reminder most bare ESP32-CAM
-programmers need: hold IO0, tap RESET, release IO0 once "Connecting...." is
-actively retrying.
+It prompts for which app to work with on startup (auto-discovers any
+`firmware/<name>/platformio.ini`), and option 0 switches apps at any time
+without restarting the script. Option 4 (Flash) prints the IO0/BOOT-button
+reminder most bare ESP32-CAM programmers need: hold IO0, tap RESET, release
+IO0 once "Connecting...." is actively retrying -- and an extra warning for
+`3_motor` about giving the car room to move.
 
-If you change `platformio.ini` (e.g. re-pinning the platform version), run
+If you change a `platformio.ini` (e.g. re-pinning the platform version), run
 option 8 (Clean) before rebuilding so a stale `.pio/` cache doesn't mask the
 change.
 

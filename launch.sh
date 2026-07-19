@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# VideoCar launcher -- check/install PlatformIO, build, flash, and monitor
-# the ESP32-CAM Video Car firmware.
+# VideoCar workshop launcher -- check/install PlatformIO, then build, flash,
+# and monitor any of the four keyestudio ESP32-CAM sketches under firmware/.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FIRMWARE_DIR="$SCRIPT_DIR/firmware"
+FIRMWARE_ROOT="$SCRIPT_DIR/firmware"
 
 # --- colors -----------------------------------------------------------------
 if [ -t 1 ]; then
@@ -23,13 +23,64 @@ info()  { echo -e "${C_CYAN}[--]${C_RESET} $1"; }
 
 banner() {
   echo -e "${C_CYAN}${C_BOLD}"
-  echo "  ┌──────────────────────────────────────┐"
-  echo "  │   🚗  VIDEOCAR  --  PLATFORMIO LAUNCH  │"
-  echo "  └──────────────────────────────────────┘"
+  echo "  ┌──────────────────────────────────────────────┐"
+  echo "  │   🚗  VIDEOCAR WORKSHOP -- PLATFORMIO LAUNCH   │"
+  echo "  └──────────────────────────────────────────────┘"
   echo -e "${C_RESET}"
 }
 
 pause() { read -rp "$(echo -e "${C_DIM}Press Enter to continue...${C_RESET}")" _; }
+
+# --- app discovery ------------------------------------------------------------
+# Any firmware/<name>/platformio.ini is a selectable app. Sorted so the
+# numeric prefixes (1_blink, 2_breathing_light, ...) come out in order.
+APP_NAMES=()
+APP_DIRS=()
+
+discover_apps() {
+  APP_NAMES=(); APP_DIRS=()
+  while IFS= read -r ini; do
+    local dir; dir="$(dirname "$ini")"
+    APP_DIRS+=("$dir")
+    APP_NAMES+=("$(basename "$dir")")
+  done < <(find "$FIRMWARE_ROOT" -mindepth 2 -maxdepth 2 -name platformio.ini | sort)
+}
+
+APP_DIR=""
+APP_NAME=""
+
+select_app() {
+  discover_apps
+  if [ ${#APP_NAMES[@]} -eq 0 ]; then
+    err "No PlatformIO projects found under $FIRMWARE_ROOT"
+    APP_DIR=""; APP_NAME=""
+    return 1
+  fi
+  echo
+  info "Available apps:"
+  local i
+  for i in "${!APP_NAMES[@]}"; do
+    echo "  $((i+1))) ${APP_NAMES[$i]}"
+  done
+  echo
+  read -rp "Choose an app [1-${#APP_NAMES[@]}]: " sel || { echo; info "Bye."; exit 0; }
+  if [[ "$sel" =~ ^[0-9]+$ ]] && [ "$sel" -ge 1 ] && [ "$sel" -le ${#APP_NAMES[@]} ]; then
+    APP_DIR="${APP_DIRS[$((sel-1))]}"
+    APP_NAME="${APP_NAMES[$((sel-1))]}"
+    ok "Selected: $APP_NAME"
+  else
+    warn "Unrecognized choice, keeping current selection ($APP_NAME)."
+  fi
+  pause
+}
+
+require_app() {
+  if [ -z "$APP_DIR" ]; then
+    warn "No app selected yet -- pick one first."
+    select_app
+  fi
+  [ -n "$APP_DIR" ]
+}
 
 # --- pio discovery -----------------------------------------------------------
 PIO_BIN=""
@@ -81,10 +132,12 @@ check_install() {
   fi
 
   echo
-  if [ -f "$FIRMWARE_DIR/platformio.ini" ]; then
-    ok "Firmware project found: $FIRMWARE_DIR"
+  discover_apps
+  if [ ${#APP_NAMES[@]} -gt 0 ]; then
+    ok "Found ${#APP_NAMES[@]} firmware project(s) under $FIRMWARE_ROOT:"
+    local n; for n in "${APP_NAMES[@]}"; do echo "     - $n"; done
   else
-    err "Firmware project missing platformio.ini at $FIRMWARE_DIR"
+    err "No PlatformIO projects found under $FIRMWARE_ROOT"
   fi
   pause
 }
@@ -121,16 +174,18 @@ install_pio() {
 }
 
 build_firmware() {
+  require_app || return
   echo
-  info "Building firmware (pio run)..."
-  pio_run run -d "$FIRMWARE_DIR" && ok "Build succeeded." || err "Build failed -- see output above."
+  info "Building $APP_NAME (pio run)..."
+  pio_run run -d "$APP_DIR" && ok "Build succeeded." || err "Build failed -- see output above."
   pause
 }
 
 clean_firmware() {
+  require_app || return
   echo
-  info "Cleaning build artifacts..."
-  pio_run run -t clean -d "$FIRMWARE_DIR" && ok "Cleaned."
+  info "Cleaning build artifacts for $APP_NAME..."
+  pio_run run -t clean -d "$APP_DIR" && ok "Cleaned."
   pause
 }
 
@@ -152,20 +207,25 @@ pick_port() {
 }
 
 flash_firmware() {
+  require_app || return
   echo
   warn "ESP32-CAM (AI-Thinker) boards flashed via a plain FTDI adapter usually"
   warn "have no auto-reset circuit. If the upload hangs at 'Connecting....':"
   warn "  1) Hold the IO0/BOOT button"
   warn "  2) Tap RESET"
   warn "  3) Release IO0 once you see 'Connecting....' actively retrying"
+  if [ "$APP_NAME" = "3_motor" ]; then
+    warn "3_motor drives forward/back/left/right immediately on boot/reset --"
+    warn "make sure the car has room to move before flashing or resetting it."
+  fi
   echo
   pick_port
   echo
-  info "Flashing firmware..."
+  info "Flashing $APP_NAME..."
   if [ -n "$SELECTED_PORT" ]; then
-    pio_run run -t upload --upload-port "$SELECTED_PORT" -d "$FIRMWARE_DIR" && ok "Flash succeeded." || err "Flash failed -- see output above."
+    pio_run run -t upload --upload-port "$SELECTED_PORT" -d "$APP_DIR" && ok "Flash succeeded." || err "Flash failed -- see output above."
   else
-    pio_run run -t upload -d "$FIRMWARE_DIR" && ok "Flash succeeded." || err "Flash failed -- see output above."
+    pio_run run -t upload -d "$APP_DIR" && ok "Flash succeeded." || err "Flash failed -- see output above."
   fi
   pause
 }
@@ -183,6 +243,7 @@ monitor_serial() {
 }
 
 build_flash_monitor() {
+  require_app || return
   build_firmware
   flash_firmware
   read -rp "Open serial monitor now? [y/N] " yn
@@ -196,13 +257,18 @@ main_menu() {
   while true; do
     clear 2>/dev/null || true
     banner
-    echo "  Firmware: $FIRMWARE_DIR"
+    if [ -n "$APP_NAME" ]; then
+      echo -e "  App: ${C_AMBER}$APP_NAME${C_RESET}  ($APP_DIR)"
+    else
+      echo -e "  App: ${C_RED}none selected${C_RESET}"
+    fi
     if find_pio; then
       echo -e "  PlatformIO: ${C_GREEN}found${C_RESET} ($PIO_BIN)"
     else
       echo -e "  PlatformIO: ${C_RED}not found${C_RESET}"
     fi
     echo
+    echo "  0) Select app"
     echo "  1) Check installation"
     echo "  2) Install PlatformIO"
     echo "  3) Build firmware"
@@ -215,6 +281,7 @@ main_menu() {
     echo
     read -rp "Choose an option: " opt || { echo; info "Bye."; exit 0; }
     case "$opt" in
+      0) select_app ;;
       1) check_install ;;
       2) install_pio ;;
       3) build_firmware ;;
@@ -229,4 +296,6 @@ main_menu() {
   done
 }
 
+# Prompt for an app up front so options 3-8 have something to act on immediately.
+select_app
 main_menu
