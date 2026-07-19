@@ -454,6 +454,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           #viewfinder{position:relative;border-radius:8px;overflow:hidden;background:var(--panel-2);
             border:1px solid var(--border);aspect-ratio:4/3;}
           #stream{display:block;width:100%;height:100%;object-fit:cover;}
+          #detect-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
           .vf-corner{position:absolute;width:22px;height:22px;border:2px solid var(--cyan);opacity:.85;}
           .vf-tl{top:8px;left:8px;border-right:0;border-bottom:0;}
           .vf-tr{top:8px;right:8px;border-left:0;border-bottom:0;}
@@ -479,9 +480,12 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
           #capture-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
           #capture-row button{height:44px;}
+          #vision-btn{grid-column:1/-1;}
           #record-btn.active{background:var(--danger);border-color:var(--danger);color:var(--bg);}
           #record-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.04em;min-height:14px;}
           #record-status.active{color:var(--danger);}
+          #vision-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
+          #vision-btn.active{background:var(--cyan);border-color:var(--cyan);color:var(--bg);}
 
           #dpad{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,56px);gap:6px;}
           #dpad button{grid-row:span 1;}
@@ -522,6 +526,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       <div class="panel" style="padding:8px;">
         <div id="viewfinder">
           <img id="stream" src="">
+          <canvas id="detect-overlay"></canvas>
           <div class="vf-corner vf-tl"></div>
           <div class="vf-corner vf-tr"></div>
           <div class="vf-corner vf-bl"></div>
@@ -530,6 +535,14 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <div id="vf-tag">CAM-01</div>
         </div>
       </div>
+
+      <section class="panel">
+        <div class="panel-label">Vision</div>
+        <div id="capture-row">
+          <button id="vision-btn" onclick="toggleVision()">&#129302; AI Vision</button>
+        </div>
+        <div id="vision-status">Runs in your browser (TensorFlow.js) &mdash; needs internet on this network to load the model once.</div>
+      </section>
 
       <section class="panel">
         <div class="panel-label">Capture</div>
@@ -719,6 +732,130 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         recordBtn.classList.remove('active');
         statusEl.classList.remove('active');
         statusEl.textContent = 'Saved.';
+      }
+    };
+  })();
+
+  // --- AI Vision: client-side object detection ---
+  // Runs entirely in the browser via TensorFlow.js + the COCO-SSD model,
+  // since the ESP32 itself has nowhere near enough headroom to run a neural
+  // net alongside the camera/WiFi/webserver. The model (~a few MB) loads
+  // from a CDN the first time you turn this on, so it needs internet access
+  // on whatever network the phone/laptop is using -- if the device is only
+  // joined to the car's own isolated AP (no internet), this will fail to
+  // load, and the status line below says so rather than failing silently.
+  // Detection pulls frames from /capture (same mechanism as Record) rather
+  // than the live MJPEG stream, since /capture already sends CORS headers
+  // and a fetched Blob is never canvas-tainted, whereas the stream's <img>
+  // would need extra CORS plumbing to be readable by canvas/WebGL at all.
+  (function () {
+    var visionBtn = document.getElementById('vision-btn');
+    var statusEl = document.getElementById('vision-status');
+    var overlay = document.getElementById('detect-overlay');
+    var octx = overlay.getContext('2d');
+    var workCanvas = document.createElement('canvas');
+    var wctx = workCanvas.getContext('2d');
+    var model = null;
+    var running = false;
+    var loopTimer = null;
+    var scriptsLoaded = false;
+
+    function loadScript(src) {
+      return new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = function () { reject(new Error('Failed to load ' + src)); };
+        document.head.appendChild(s);
+      });
+    }
+
+    function ensureScripts() {
+      if (scriptsLoaded) return Promise.resolve();
+      statusEl.textContent = 'Loading AI model (needs internet on this network)...';
+      return loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js')
+        .then(function () { return loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js'); })
+        .then(function () { scriptsLoaded = true; });
+    }
+
+    function resizeOverlay() {
+      var vf = document.getElementById('viewfinder');
+      overlay.width = vf.clientWidth;
+      overlay.height = vf.clientHeight;
+    }
+
+    function drawDetections(predictions, srcW, srcH) {
+      resizeOverlay();
+      var scaleX = overlay.width / srcW;
+      var scaleY = overlay.height / srcH;
+      octx.clearRect(0, 0, overlay.width, overlay.height);
+      octx.lineWidth = 2;
+      octx.font = '12px ui-monospace, monospace';
+      octx.textBaseline = 'top';
+      predictions.forEach(function (p) {
+        var x = p.bbox[0] * scaleX, y = p.bbox[1] * scaleY;
+        var w = p.bbox[2] * scaleX, h = p.bbox[3] * scaleY;
+        octx.strokeStyle = '#4CE0D2';
+        octx.strokeRect(x, y, w, h);
+        var label = p.class + ' ' + Math.round(p.score * 100) + '%';
+        var textW = octx.measureText(label).width + 8;
+        octx.fillStyle = '#4CE0D2';
+        octx.fillRect(x, Math.max(0, y - 16), textW, 16);
+        octx.fillStyle = '#0B0F14';
+        octx.fillText(label, x + 4, Math.max(0, y - 15));
+      });
+    }
+
+    function detectOnce() {
+      fetch(document.location.origin + '/capture?_=' + Date.now())
+        .then(function (r) { return r.blob(); })
+        .then(function (blob) { return createImageBitmap(blob); })
+        .then(function (bitmap) {
+          if (workCanvas.width !== bitmap.width || workCanvas.height !== bitmap.height) {
+            workCanvas.width = bitmap.width;
+            workCanvas.height = bitmap.height;
+          }
+          wctx.drawImage(bitmap, 0, 0);
+          return model.detect(workCanvas);
+        })
+        .then(function (predictions) {
+          if (!running) return;
+          drawDetections(predictions, workCanvas.width, workCanvas.height);
+          statusEl.textContent = predictions.length
+            ? ('Sees: ' + predictions.map(function (p) { return p.class; }).join(', '))
+            : 'Watching... nothing recognized yet.';
+        })
+        .catch(function () { /* transient network hiccup -- next tick retries */ });
+    }
+
+    window.toggleVision = function () {
+      if (!running) {
+        visionBtn.disabled = true;
+        ensureScripts()
+          .then(function () {
+            if (model) return;
+            statusEl.textContent = 'Warming up the model...';
+            return cocoSsd.load().then(function (m) { model = m; });
+          })
+          .then(function () {
+            running = true;
+            visionBtn.disabled = false;
+            visionBtn.textContent = '\u23F9 Stop Vision';
+            visionBtn.classList.add('active');
+            statusEl.textContent = 'AI Vision on -- looking every ~500ms.';
+            loopTimer = window.setInterval(detectOnce, 500);
+          })
+          .catch(function (e) {
+            visionBtn.disabled = false;
+            statusEl.textContent = "Couldn't load the AI model -- check this network has internet (won't work while only joined to the car's own WiFi with no internet uplink). " + e.message;
+          });
+      } else {
+        running = false;
+        window.clearInterval(loopTimer);
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+        visionBtn.textContent = '\uD83E\uDD16 AI Vision';
+        visionBtn.classList.remove('active');
+        statusEl.textContent = 'Stopped.';
       }
     };
   })();
