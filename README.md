@@ -5,6 +5,11 @@ Car. Built on top of keyestudio's stock sketch, with a virtual joystick,
 connection-loss failsafe, snapshot/video capture, a redesigned control UI, and
 a PlatformIO build system alongside the original Arduino IDE sketch.
 
+📖 **Official hardware/assembly tutorial:** [docs.keyestudio.com/projects/KS5017](https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html)
+-- kit list, assembly steps, pinout, and the original stock code this project
+builds on. Start there for hardware assembly; this repo picks up once the car
+is physically built and the stock sketch runs.
+
 <img src="preview_full.png" width="360" alt="Control page screenshot">
 
 ## Quick start
@@ -120,6 +125,8 @@ Standard Arduino IDE flow. Make sure `Tools > PSRAM` is set to `Enabled` and
 "Huge APP (3MB No OTA/1MB SPIFFS)").
 
 ## Troubleshooting
+
+See also the official tutorial's own [Common Problems](https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html#common-problems) section (wrong board selection, IP/WiFi connection issues, battery/charging) for issues unrelated to this repo's changes.
 
 **`Camera init failed with error 0x106` (only under PlatformIO, works fine in
 Arduino IDE):** This is `ESP_ERR_NOT_SUPPORTED` from the camera sensor probe.

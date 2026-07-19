@@ -507,6 +507,10 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           input[type=range]::-moz-range-track{width:100%;height:4px;background:var(--border);border-radius:2px;}
           input[type=range]::-moz-range-thumb{border:2px solid var(--panel);height:20px;width:20px;border-radius:50%;
             background:var(--cyan);cursor:pointer;}
+          #app-footer{width:100%;text-align:center;padding:16px 0 4px;}
+          #app-footer a{color:var(--muted);font-size:11px;letter-spacing:.04em;text-decoration:none;
+            border-bottom:1px dotted var(--border);}
+          #app-footer a:active,#app-footer a:hover{color:var(--cyan);border-bottom-color:var(--cyan);}
         </style>
     </head>
     <body>
@@ -583,6 +587,10 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <span class="val" id="framesize-val">5</span>
         </div>
       </section>
+
+      <footer id="app-footer">
+        <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" target="_blank" rel="noopener">&#128214; Official KS5017 Tutorial</a>
+      </footer>
     <script>  
    // Functions to control streaming
   // Stream auto-recovery: an MJPEG <img> stream that drops (WiFi blip, phone
