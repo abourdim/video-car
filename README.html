@@ -91,6 +91,11 @@
         command is received for 500ms (WiFi drop, phone locked, tab closed, etc.),
         instead of driving on unattended. WiFi auto-reconnect in station mode, MJPEG
         stream auto-recovery, and a live connection indicator.</li>
+      <li><strong>AI Vision</strong> &mdash; a toggleable live object-detection overlay
+        (TensorFlow.js + COCO-SSD) drawn right over the viewfinder, running entirely in
+        the browser since the ESP32 can't run a neural net alongside everything else.
+        Needs internet access on the network the device is using to load the model the
+        first time.</li>
       <li><strong>Snapshot &amp; video recording</strong> &mdash; a Capture panel
         downloads a still JPEG, or records a <code>.webm</code>/<code>.mp4</code>
         client-side (Canvas + MediaRecorder pulling frames from <code>/capture</code>)
