@@ -39,11 +39,11 @@ open `http://192.168.4.1` in a browser.
   for 500ms (WiFi drop, phone locked, tab closed, etc.), instead of driving
   on unattended. WiFi auto-reconnect in station mode, MJPEG stream
   auto-recovery, and a live connection indicator.
-- **AI Vision** — a toggleable live object-detection overlay (TensorFlow.js +
-  COCO-SSD) drawn right over the viewfinder, running entirely in the
+- **AI Vision** — a toggleable live overlay detecting both objects (COCO-SSD)
+  and faces (BlazeFace) right over the viewfinder, running entirely in the
   browser since the ESP32 can't run a neural net alongside everything else.
   Needs internet access on the network the device is using to load the
-  model the first time.
+  models the first time.
 - **Snapshot & video recording** — a Capture panel downloads a still JPEG, or
   records a `.webm`/`.mp4` client-side (Canvas + MediaRecorder pulling frames
   from `/capture`) since the ESP32 itself can't encode video or write to an
