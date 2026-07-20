@@ -810,7 +810,12 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         .then(function () {
           return Promise.all([
             loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js'),
-            loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0')
+            // NOTE: this package's own package.json "jsdelivr"/"unpkg" field
+            // points at "dist/blazeface.min.js", which does NOT exist in the
+            // published tarball for 0.1.0 (verified against the actual npm
+            // package contents) -- that's why both the bare URL and that
+            // path 404. The real browser-global (UMD) build is this file:
+            loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0/dist/blazeface.min.umd.js')
           ]);
         })
         .then(function () { scriptsLoaded = true; });
