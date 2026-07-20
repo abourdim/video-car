@@ -243,6 +243,12 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
   } else if (!strcmp(variable, "quality")) {
     Serial.println("quality");
     res = s->set_quality(s, val);
+  } else if (!strcmp(variable, "vflip")) {
+    Serial.println("vflip");
+    res = s->set_vflip(s, val);
+  } else if (!strcmp(variable, "hmirror")) {
+    Serial.println("hmirror");
+    res = s->set_hmirror(s, val);
   }
   //Remote Control
   else if (!strcmp(variable, "flash"))  //LED flashing
@@ -486,6 +492,9 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           #record-status.active{color:var(--danger);}
           #vision-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
           #vision-btn.active{background:var(--cyan);border-color:var(--cyan);color:var(--bg);}
+          #flip-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+          #flip-row button{height:36px;font-size:10px;}
+          #flip-row button.active{background:var(--cyan);border-color:var(--cyan);color:var(--bg);}
 
           #dpad{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,56px);gap:6px;}
           #dpad button{grid-row:span 1;}
@@ -599,6 +608,13 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <input type="range" id="framesize" min="0" max="6" value="5" oninput="document.getElementById('framesize-val').textContent=this.value" onchange="try{fetch(document.location.origin+'/control?var=framesize&val='+this.value);}catch(e){}">
           <span class="val" id="framesize-val">5</span>
         </div>
+        <div class="slider-row" style="grid-template-columns:66px 1fr;">
+          <label>Orientation</label>
+          <div id="flip-row">
+            <button id="vflip-btn" class="active" onclick="toggleFlip('vflip', this)">&#8597; Flip</button>
+            <button id="hmirror-btn" class="active" onclick="toggleFlip('hmirror', this)">&#8596; Mirror</button>
+          </div>
+        </div>
       </section>
 
       <footer id="app-footer">
@@ -618,6 +634,17 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     setTimeout(startStream, 1000);
   });
   startStream();
+
+  // Vertical flip / horizontal mirror toggles. Both default to ON (matching
+  // the s->set_vflip(s,1) / s->set_hmirror(s,1) the firmware sets at boot,
+  // since the camera is mounted upside-down/mirrored on this chassis) --
+  // toggle either off here if your image looks wrong without needing to
+  // reflash.
+  window.toggleFlip = function (varName, btn) {
+    var turningOn = !btn.classList.contains('active');
+    btn.classList.toggle('active', turningOn);
+    fetch(document.location.origin + '/control?var=' + varName + '&val=' + (turningOn ? 1 : 0)).catch(function () {});
+  };
 
   // --- Snapshot & video recording ---
   // Snapshot: pulls a single fresh JPEG from the existing /capture endpoint and
