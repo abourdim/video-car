@@ -39,6 +39,9 @@ open `http://192.168.4.1` in a browser.
   for 500ms (WiFi drop, phone locked, tab closed, etc.), instead of driving
   on unattended. WiFi auto-reconnect in station mode, MJPEG stream
   auto-recovery, and a live connection indicator.
+- **Live flip/mirror toggles** — Flip and Mirror buttons in the Systems panel
+  call the sensor's `set_vflip`/`set_hmirror` live, so you can fix the
+  camera's orientation for your chassis without reflashing.
 - **AI Vision** — a toggleable live overlay detecting both objects (COCO-SSD)
   and faces (BlazeFace) right over the viewfinder, running entirely in the
   browser since the ESP32 can't run a neural net alongside everything else.

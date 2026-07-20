@@ -91,6 +91,10 @@
         command is received for 500ms (WiFi drop, phone locked, tab closed, etc.),
         instead of driving on unattended. WiFi auto-reconnect in station mode, MJPEG
         stream auto-recovery, and a live connection indicator.</li>
+      <li><strong>Live flip/mirror toggles</strong> &mdash; Flip and Mirror buttons in the
+        Systems panel call the sensor's <code>set_vflip</code>/<code>set_hmirror</code>
+        live, so you can fix the camera's orientation for your chassis without
+        reflashing.</li>
       <li><strong>AI Vision</strong> &mdash; a toggleable live overlay detecting both
         objects (COCO-SSD) and faces (BlazeFace) right over the viewfinder, running
         entirely in the browser since the ESP32 can't run a neural net alongside
