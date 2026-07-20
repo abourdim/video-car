@@ -39,6 +39,11 @@ open `http://192.168.4.1` in a browser.
   for 500ms (WiFi drop, phone locked, tab closed, etc.), instead of driving
   on unattended. WiFi auto-reconnect in station mode, MJPEG stream
   auto-recovery, and a live connection indicator.
+- **Settings persistence** — Speed, Trim, Lights, Quality, Resolution, Flip,
+  and Mirror are all remembered two ways: on the car itself (NVS flash,
+  survives reboots/reflashes, same for any device that connects) and in the
+  browser's `localStorage` (instant restore on reload). On page load the
+  device's own values always win if they differ from the local cache.
 - **Live flip/mirror toggles** — Flip and Mirror buttons in the Systems panel
   call the sensor's `set_vflip`/`set_hmirror` live, so you can fix the
   camera's orientation for your chassis without reflashing.

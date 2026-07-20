@@ -1,9 +1,24 @@
 #ifndef APP_SERVER_H
 #define APP_SERVER_H
 
+#include <Preferences.h>
+
 // Define Servo PWM Values & Stopped Variable
-int speed = 100;
+int speed = 248;  // matches the Speed slider's default UI position (8 * 31)
 int trim = 0;
+
+// Mirror of currently-applied settings that don't have their own dedicated
+// global elsewhere, kept so /status can report the true device state (and
+// so it round-trips exactly with what's persisted to flash below).
+int flashLevel = 10;
+int vflipState = 1;
+int hmirrorState = 1;
+
+// Settings persist to the ESP32's own flash (NVS) via this, namespaced
+// "videocar", so Speed/Trim/Lights/Quality/Resolution/Flip/Mirror survive
+// reboots and reflashes and are the same for whichever device connects --
+// see the load in setup() and the prefs.putInt() calls in cmd_handler below.
+Preferences prefs;
 
 // Timestamp (millis) of the last movement command received from a client.
 // loop() in the .ino watches this and force-stops the car if it goes stale,
@@ -240,30 +255,40 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
   if (!strcmp(variable, "framesize")) {
     Serial.println("framesize");
     if (s->pixformat == PIXFORMAT_JPEG) res = s->set_framesize(s, (framesize_t)val);
+    prefs.putInt("framesize", val);
   } else if (!strcmp(variable, "quality")) {
     Serial.println("quality");
     res = s->set_quality(s, val);
+    prefs.putInt("quality", val);
   } else if (!strcmp(variable, "vflip")) {
     Serial.println("vflip");
     res = s->set_vflip(s, val);
+    vflipState = val;
+    prefs.putInt("vflip", val);
   } else if (!strcmp(variable, "hmirror")) {
     Serial.println("hmirror");
     res = s->set_hmirror(s, val);
+    hmirrorState = val;
+    prefs.putInt("hmirror", val);
   }
   //Remote Control
   else if (!strcmp(variable, "flash"))  //LED flashing
   {
-    analogWrite(12, val);   
+    analogWrite(12, val);
+    flashLevel = val;
+    prefs.putInt("flash", val);
   } else if (!strcmp(variable, "speed"))  //Speed settings
   {
     if (val > 8) val = 8;
     else if (val < 0) val = 0;
     speed = val * 31;
+    prefs.putInt("speed", speed);
   } else if (!strcmp(variable, "trim"))  //trim
   {
     if (val > 32) val = 32;
     else if (val < -32) val = -32;
     trim = val;
+    prefs.putInt("trim", val);
   } else if (!strcmp(variable, "car")) {
     lastCommandMillis = millis();
     if (val == 1)  //Forward
@@ -418,6 +443,11 @@ static esp_err_t status_handler(httpd_req_t *req) {
 
   p += sprintf(p, "\"framesize\":%u,", s->status.framesize);
   p += sprintf(p, "\"quality\":%u,", s->status.quality);
+  p += sprintf(p, "\"vflip\":%d,", vflipState);
+  p += sprintf(p, "\"hmirror\":%d,", hmirrorState);
+  p += sprintf(p, "\"speed\":%d,", speed / 31);
+  p += sprintf(p, "\"trim\":%d,", trim);
+  p += sprintf(p, "\"flash\":%d", flashLevel);
   *p++ = '}';
   *p++ = 0;
   httpd_resp_set_type(req, "application/json");
@@ -585,27 +615,27 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         <div class="panel-label">Systems</div>
         <div class="slider-row">
           <label>Speed</label>
-          <input type="range" id="speed" min="0" max="8" value="8" oninput="document.getElementById('speed-val').textContent=this.value" onchange="try{fetch(document.location.origin+'/control?var=speed&val='+this.value);}catch(e){}">
+          <input type="range" id="speed" min="0" max="8" value="8" oninput="document.getElementById('speed-val').textContent=this.value" onchange="sendControl('speed', this.value)">
           <span class="val" id="speed-val">8</span>
         </div>
         <div class="slider-row">
           <label>Trim</label>
-          <input type="range" id="trim" min="-32" max="32" value="0" oninput="document.getElementById('trim-val').textContent=this.value" onchange="try{fetch(document.location.origin+'/control?var=trim&val='+this.value);}catch(e){}">
+          <input type="range" id="trim" min="-32" max="32" value="0" oninput="document.getElementById('trim-val').textContent=this.value" onchange="sendControl('trim', this.value)">
           <span class="val" id="trim-val">0</span>
         </div>
         <div class="slider-row">
           <label>Lights</label>
-          <input type="range" id="flash" min="0" max="255" value="10" oninput="document.getElementById('flash-val').textContent=this.value" onchange="try{fetch(document.location.origin+'/control?var=flash&val='+this.value);}catch(e){}">
+          <input type="range" id="flash" min="0" max="255" value="10" oninput="document.getElementById('flash-val').textContent=this.value" onchange="sendControl('flash', this.value)">
           <span class="val" id="flash-val">10</span>
         </div>
         <div class="slider-row">
           <label>Quality</label>
-          <input type="range" id="quality" min="10" max="63" value="10" oninput="document.getElementById('quality-val').textContent=this.value" onchange="try{fetch(document.location.origin+'/control?var=quality&val='+this.value);}catch(e){}">
+          <input type="range" id="quality" min="10" max="63" value="10" oninput="document.getElementById('quality-val').textContent=this.value" onchange="sendControl('quality', this.value)">
           <span class="val" id="quality-val">10</span>
         </div>
         <div class="slider-row">
           <label>Resolution</label>
-          <input type="range" id="framesize" min="0" max="6" value="5" oninput="document.getElementById('framesize-val').textContent=this.value" onchange="try{fetch(document.location.origin+'/control?var=framesize&val='+this.value);}catch(e){}">
+          <input type="range" id="framesize" min="0" max="6" value="5" oninput="document.getElementById('framesize-val').textContent=this.value" onchange="sendControl('framesize', this.value)">
           <span class="val" id="framesize-val">5</span>
         </div>
         <div class="slider-row" style="grid-template-columns:66px 1fr;">
@@ -621,6 +651,60 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" target="_blank" rel="noopener">&#128214; Official KS5017 Tutorial</a>
       </footer>
     <script>  
+   // --- Settings persistence ---
+   // Every control (Speed/Trim/Lights/Quality/Resolution/Flip/Mirror) is
+   // persisted two ways: on the car itself (NVS flash, via prefs.putInt in
+   // cmd_handler -- survives reboots/reflashes, same for any device that
+   // connects) and in this browser's localStorage (instant restore on
+   // reload without waiting on a request). On load: paint immediately from
+   // whatever's cached locally, then fetch /status -- the device's own
+   // current values -- and let that win if it differs (e.g. a different
+   // phone changed something since this browser last connected).
+   var SETTINGS_KEY = 'videocar-settings-v1';
+   var currentSettings = {};
+
+   function loadLocalSettings() {
+     try {
+       var raw = localStorage.getItem(SETTINGS_KEY);
+       return raw ? JSON.parse(raw) : null;
+     } catch (e) { return null; }
+   }
+   function saveLocalSettings() {
+     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(currentSettings)); } catch (e) {}
+   }
+   function applySettings(vals) {
+     if (!vals) return;
+     for (var k in vals) { currentSettings[k] = vals[k]; }
+     [['speed', 'speed-val'], ['trim', 'trim-val'], ['flash', 'flash-val'],
+      ['quality', 'quality-val'], ['framesize', 'framesize-val']].forEach(function (pair) {
+       var v = vals[pair[0]];
+       if (v === undefined || v === null) return;
+       var el = document.getElementById(pair[0]);
+       var vEl = document.getElementById(pair[1]);
+       if (el) el.value = v;
+       if (vEl) vEl.textContent = v;
+     });
+     if (vals.vflip !== undefined) {
+       var vb = document.getElementById('vflip-btn');
+       if (vb) vb.classList.toggle('active', !!vals.vflip);
+     }
+     if (vals.hmirror !== undefined) {
+       var hb = document.getElementById('hmirror-btn');
+       if (hb) hb.classList.toggle('active', !!vals.hmirror);
+     }
+   }
+   function sendControl(varName, val) {
+     currentSettings[varName] = val;
+     saveLocalSettings();
+     fetch(document.location.origin + '/control?var=' + varName + '&val=' + val).catch(function () {});
+   }
+
+   applySettings(loadLocalSettings());  // instant paint, may be stale/absent
+   fetch(document.location.origin + '/status')
+     .then(function (r) { return r.json(); })
+     .then(function (vals) { applySettings(vals); saveLocalSettings(); })
+     .catch(function () { /* offline on load -- local cache (if any) stands */ });
+
    // Functions to control streaming
   // Stream auto-recovery: an MJPEG <img> stream that drops (WiFi blip, phone
   // sleep, etc.) just goes silent with no event -- it doesn't reliably fire
@@ -643,7 +727,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
   window.toggleFlip = function (varName, btn) {
     var turningOn = !btn.classList.contains('active');
     btn.classList.toggle('active', turningOn);
-    fetch(document.location.origin + '/control?var=' + varName + '&val=' + (turningOn ? 1 : 0)).catch(function () {});
+    sendControl(varName, turningOn ? 1 : 0);
   };
 
   // --- Snapshot & video recording ---

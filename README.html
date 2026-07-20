@@ -91,6 +91,11 @@
         command is received for 500ms (WiFi drop, phone locked, tab closed, etc.),
         instead of driving on unattended. WiFi auto-reconnect in station mode, MJPEG
         stream auto-recovery, and a live connection indicator.</li>
+      <li><strong>Settings persistence</strong> &mdash; Speed, Trim, Lights, Quality,
+        Resolution, Flip, and Mirror are all remembered two ways: on the car itself
+        (NVS flash, survives reboots/reflashes, same for any device that connects) and
+        in the browser's <code>localStorage</code> (instant restore on reload). On page
+        load the device's own values always win if they differ from the local cache.</li>
       <li><strong>Live flip/mirror toggles</strong> &mdash; Flip and Mirror buttons in the
         Systems panel call the sensor's <code>set_vflip</code>/<code>set_hmirror</code>
         live, so you can fix the camera's orientation for your chassis without
