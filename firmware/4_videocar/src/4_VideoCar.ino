@@ -126,14 +126,26 @@ void setup() {
   }
   //drop down frame size for higher initial frame rate
   sensor_t* s = esp_camera_sensor_get();
-  s->set_framesize(s, FRAMESIZE_QVGA);
-  //Video flip code
-  s->set_vflip(s, 1);
-  s->set_hmirror(s, 1);
-  // s->set_vflip(s, 0);
-  // s->set_hmirror(s, 0);
+
+  // Load settings persisted to flash (NVS) by previous /control calls, so
+  // Speed/Trim/Lights/Quality/Resolution/Flip/Mirror survive reboots and
+  // reflashes instead of resetting to hardcoded defaults every time.
+  // Defaults here (framesize QVGA, vflip/hmirror on) match what this sketch
+  // always hardcoded before, so a fresh board with nothing saved yet still
+  // boots exactly as it always did.
+  prefs.begin("videocar", false);
+  s->set_framesize(s, (framesize_t)prefs.getInt("framesize", FRAMESIZE_QVGA));
+  s->set_quality(s, prefs.getInt("quality", 10));
+  vflipState = prefs.getInt("vflip", 1);
+  hmirrorState = prefs.getInt("hmirror", 1);
+  s->set_vflip(s, vflipState);
+  s->set_hmirror(s, hmirrorState);
+  speed = prefs.getInt("speed", speed);
+  trim = prefs.getInt("trim", trim);
+  flashLevel = prefs.getInt("flash", flashLevel);
 
   pinMode(LED_GPIO_NUM,OUTPUT);
+  analogWrite(LED_GPIO_NUM, flashLevel);
 
   if (!ap) {
     // Connect to Router
