@@ -956,8 +956,8 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           }
           wctx.drawImage(bitmap, 0, 0);
           return Promise.all([
-            objectModel.detect(workCanvas),
-            faceModel.estimateFaces(workCanvas, false)
+            objectModel ? objectModel.detect(workCanvas) : Promise.resolve([]),
+            faceModel ? faceModel.estimateFaces(workCanvas, false) : Promise.resolve([])
           ]);
         })
         .then(function (results) {
@@ -974,26 +974,44 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     window.toggleVision = function () {
       if (!running) {
         visionBtn.disabled = true;
+        var loadErrors = [];
         ensureScripts()
           .then(function () {
-            if (objectModel && faceModel) return;
-            statusEl.textContent = 'Warming up the models...';
-            return Promise.all([
-              cocoSsd.load().then(function (m) { objectModel = m; }),
-              blazeface.load().then(function (m) { faceModel = m; })
-            ]);
+            statusEl.textContent = 'Warming up the object model...';
+            if (objectModel) return;
+            // coco-ssd and blazeface fetch their weight files from Google's
+            // model hosting (storage.googleapis.com / tfhub.dev), which is a
+            // DIFFERENT host than the jsdelivr CDN the scripts just loaded
+            // from -- a network can allow one and block the other, so these
+            // are tried and reported independently rather than as one
+            // all-or-nothing Promise.all.
+            return cocoSsd.load()
+              .then(function (m) { objectModel = m; })
+              .catch(function (e) { loadErrors.push('object model (storage.googleapis.com): ' + e.message); });
           })
           .then(function () {
-            running = true;
+            statusEl.textContent = 'Warming up the face model...';
+            if (faceModel) return;
+            return blazeface.load()
+              .then(function (m) { faceModel = m; })
+              .catch(function (e) { loadErrors.push('face model (tfhub.dev/storage.googleapis.com): ' + e.message); });
+          })
+          .then(function () {
             visionBtn.disabled = false;
+            if (!objectModel && !faceModel) {
+              statusEl.textContent = "Couldn't reach the model files (scripts loaded fine, so it's the model-weight hosts specifically, not jsdelivr) -- " + loadErrors.join('; ');
+              return;
+            }
+            running = true;
             visionBtn.textContent = '\u23F9 Stop Vision';
             visionBtn.classList.add('active');
-            statusEl.textContent = 'AI Vision on -- looking every ~500ms.';
+            var note = loadErrors.length ? (' (' + loadErrors.length + ' model failed to load, running with what did)') : '';
+            statusEl.textContent = 'AI Vision on -- looking every ~500ms.' + note;
             loopTimer = window.setInterval(detectOnce, 500);
           })
           .catch(function (e) {
             visionBtn.disabled = false;
-            statusEl.textContent = "Couldn't load the AI models -- check this network has internet (won't work while only joined to the car's own WiFi with no internet uplink). " + e.message;
+            statusEl.textContent = "Couldn't load the AI scripts -- check this network has internet (won't work while only joined to the car's own WiFi with no internet uplink). " + e.message;
           });
       } else {
         running = false;
