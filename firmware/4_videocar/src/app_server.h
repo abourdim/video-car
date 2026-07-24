@@ -520,6 +520,9 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           #plates-btn{grid-column:1/-1;}
           #plates-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
           #plates-btn.active{background:#E85DBF;border-color:#E85DBF;color:var(--bg);}
+          #codes-btn{grid-column:1/-1;}
+          #codes-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
+          #codes-btn.active{background:#D4E157;border-color:#D4E157;color:var(--bg);}
           #record-btn.active{background:var(--danger);border-color:var(--danger);color:var(--bg);}
           #record-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.04em;min-height:14px;}
           #record-status.active{color:var(--danger);}
@@ -588,6 +591,10 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <button id="plates-btn" onclick="togglePlates()">&#128290; Plates</button>
         </div>
         <div id="plates-status">Reads text off detected vehicles (magenta) via OCR. Heuristic, low-res (320&times;240) camera &mdash; works best close, well-lit, and square-on to the plate.</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button id="codes-btn" onclick="toggleCodes()">&#9638; QR / Barcode</button>
+        </div>
+        <div id="codes-status">Uses your browser's built-in scanner when available &mdash; no internet needed for this one. Falls back to a QR-only library (needs internet once) on browsers without native support.</div>
       </section>
 
       <section class="panel">
@@ -877,6 +884,8 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     var statusEl = document.getElementById('vision-status');
     var platesBtn = document.getElementById('plates-btn');
     var platesStatusEl = document.getElementById('plates-status');
+    var codesBtn = document.getElementById('codes-btn');
+    var codesStatusEl = document.getElementById('codes-status');
     var overlay = document.getElementById('detect-overlay');
     var octx = overlay.getContext('2d');
     var workCanvas = document.createElement('canvas');
@@ -899,8 +908,14 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     // Last-known detections from each (possibly independent, possibly
     // differently-timed) source, redrawn together so AI Vision and Plates
     // can run simultaneously without erasing each other's boxes.
-    var lastObjects = [], lastFaces = [], lastPlates = [];
+    var lastObjects = [], lastFaces = [], lastPlates = [], lastCodes = [];
     var lastFrameW = 320, lastFrameH = 240;
+
+    var codesRunning = false;
+    var codeLoopTimer = null;
+    var nativeBarcodeSupported = 'BarcodeDetector' in window;
+    var barcodeDetector = null;
+    var jsQRLoaded = false;
 
     function loadScript(src) {
       return new Promise(function (resolve, reject) {
@@ -989,6 +1004,11 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
       lastPlates.forEach(function (pl) {
         drawBox(pl.x * scaleX, pl.y * scaleY, pl.w * scaleX, pl.h * scaleY, '#E85DBF', pl.text);
+      });
+
+      lastCodes.forEach(function (c) {
+        var label = c.text.length > 28 ? (c.text.slice(0, 28) + '\u2026') : c.text;
+        drawBox(c.x * scaleX, c.y * scaleY, c.w * scaleX, c.h * scaleY, '#D4E157', label);
       });
     }
 
@@ -1106,6 +1126,105 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         })
         .catch(function () { /* transient network hiccup -- next tick retries */ });
     }
+
+    // --- QR / Barcode: native browser API first, jsQR fallback ---
+    // Unlike everything else in Vision, modern browsers (Chrome/Edge/Android
+    // Chrome) have a BUILT-IN barcode/QR scanner (the Shape Detection API's
+    // BarcodeDetector) -- no model download, no CDN, no internet needed at
+    // all, and it works even while only joined to the car's own isolated
+    // AP. Safari/iOS and older browsers don't support it, so this falls
+    // back to jsQR (verified against the real published npm tarball, same
+    // as blazeface/tesseract above) -- QR codes only in that case, since
+    // jsQR doesn't read 1D barcodes (EAN/UPC/Code128/etc).
+    function ensureJsQR() {
+      if (jsQRLoaded) return Promise.resolve();
+      return loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js').then(function () { jsQRLoaded = true; });
+    }
+
+    function codeScanOnce() {
+      fetch(document.location.origin + '/capture?_=' + Date.now())
+        .then(function (r) { return r.blob(); })
+        .then(function (blob) { return createImageBitmap(blob); })
+        .then(function (bitmap) {
+          if (workCanvas.width !== bitmap.width || workCanvas.height !== bitmap.height) {
+            workCanvas.width = bitmap.width;
+            workCanvas.height = bitmap.height;
+          }
+          wctx.drawImage(bitmap, 0, 0);
+          lastFrameW = workCanvas.width;
+          lastFrameH = workCanvas.height;
+
+          if (nativeBarcodeSupported) {
+            if (!barcodeDetector) barcodeDetector = new BarcodeDetector();
+            return barcodeDetector.detect(workCanvas).then(function (results) {
+              return results.map(function (r) {
+                var bb = r.boundingBox;
+                return { x: bb.x, y: bb.y, w: bb.width, h: bb.height, text: r.rawValue, format: r.format };
+              });
+            });
+          }
+
+          var imgData = wctx.getImageData(0, 0, workCanvas.width, workCanvas.height);
+          var code = jsQR(imgData.data, imgData.width, imgData.height);
+          if (!code) return [];
+          var loc = code.location;
+          var xs = [loc.topLeftCorner.x, loc.topRightCorner.x, loc.bottomLeftCorner.x, loc.bottomRightCorner.x];
+          var ys = [loc.topLeftCorner.y, loc.topRightCorner.y, loc.bottomLeftCorner.y, loc.bottomRightCorner.y];
+          var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+          var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+          return [{ x: minX, y: minY, w: maxX - minX, h: maxY - minY, text: code.data, format: 'qr_code' }];
+        })
+        .then(function (codes) {
+          if (!codesRunning) return;
+          lastCodes = codes;
+          redrawOverlay();
+          if (codes.length) {
+            codesStatusEl.textContent = codes.map(function (c) {
+              var t = c.text.length > 40 ? (c.text.slice(0, 40) + '\u2026') : c.text;
+              return c.format + ': ' + t;
+            }).join(' | ');
+          } else {
+            codesStatusEl.textContent = nativeBarcodeSupported
+              ? 'Watching for QR codes & barcodes...'
+              : 'Watching for QR codes... (no native support on this browser, so only QR works, not 1D barcodes)';
+          }
+        })
+        .catch(function () { /* transient network hiccup -- next tick retries */ });
+    }
+
+    window.toggleCodes = function () {
+      if (!codesRunning) {
+        codesBtn.disabled = true;
+        codesStatusEl.textContent = nativeBarcodeSupported
+          ? 'Starting (native browser support -- no download needed)...'
+          : 'Loading QR fallback library (needs internet on this network)...';
+        var starter = nativeBarcodeSupported ? Promise.resolve() : ensureJsQR();
+        starter
+          .then(function () {
+            codesRunning = true;
+            codesBtn.disabled = false;
+            codesBtn.textContent = '\u23F9 Stop QR/Barcode';
+            codesBtn.classList.add('active');
+            codesStatusEl.textContent = nativeBarcodeSupported
+              ? 'Scanning for QR codes & barcodes (native, works offline)...'
+              : 'Scanning for QR codes (fallback mode -- 1D barcodes need a browser with native support)...';
+            codeLoopTimer = window.setInterval(codeScanOnce, 400);
+            codeScanOnce();
+          })
+          .catch(function (e) {
+            codesBtn.disabled = false;
+            codesStatusEl.textContent = "Couldn't load the QR library -- " + e.message;
+          });
+      } else {
+        codesRunning = false;
+        window.clearInterval(codeLoopTimer);
+        lastCodes = [];
+        redrawOverlay();
+        codesBtn.textContent = '\u25A6 QR / Barcode';
+        codesBtn.classList.remove('active');
+        codesStatusEl.textContent = 'Stopped.';
+      }
+    };
 
     window.togglePlates = function () {
       if (!platesRunning) {

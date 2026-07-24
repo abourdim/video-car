@@ -54,6 +54,11 @@ open `http://192.168.4.1` in a browser.
 - **Live flip/mirror toggles** — Flip and Mirror buttons in the Systems panel
   call the sensor's `set_vflip`/`set_hmirror` live, so you can fix the
   camera's orientation for your chassis without reflashing.
+- **QR / Barcode** — uses the browser's built-in `BarcodeDetector` when
+  available (Chrome/Edge/Android Chrome) — no network needed at all, works
+  even on the car's own isolated AP. Falls back to the jsQR library (QR
+  codes only, needs internet once) on browsers without native support
+  (Safari/iOS).
 - **Plates** — an experimental license-plate reader. There's no ready-made
   plate-detector model like there is for objects/faces, so this reuses
   COCO-SSD's car/truck/bus boxes, crops the likely plate region, and runs

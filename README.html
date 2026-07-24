@@ -103,6 +103,11 @@ cd video-car</code></pre>
         Systems panel call the sensor's <code>set_vflip</code>/<code>set_hmirror</code>
         live, so you can fix the camera's orientation for your chassis without
         reflashing.</li>
+      <li><strong>QR / Barcode</strong> &mdash; uses the browser's built-in
+        <code>BarcodeDetector</code> when available (Chrome/Edge/Android Chrome) &mdash;
+        no network needed at all, works even on the car's own isolated AP. Falls back to
+        the jsQR library (QR codes only, needs internet once) on browsers without native
+        support (Safari/iOS).</li>
       <li><strong>Plates</strong> &mdash; an experimental license-plate reader. There's no
         ready-made plate-detector model like there is for objects/faces, so this reuses
         COCO-SSD's car/truck/bus boxes, crops the likely plate region, and runs real OCR
