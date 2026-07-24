@@ -54,6 +54,16 @@ open `http://192.168.4.1` in a browser.
 - **Live flip/mirror toggles** — Flip and Mirror buttons in the Systems panel
   call the sensor's `set_vflip`/`set_hmirror` live, so you can fix the
   camera's orientation for your chassis without reflashing.
+- **Pose detection** — MoveNet skeleton tracking (light blue), dots + limb
+  lines over up to a few people at once.
+- **Hand tracking** — MediaPipe Hands via TF.js's `tfjs` runtime (avoids a
+  separate MediaPipe script/wasm bundle from yet another host), 21
+  keypoints per hand plus left/right handedness (orange).
+- **Facial expression** — happy/sad/angry/surprised/etc. via
+  `@vladmandic/face-api` (an actively-maintained fork of the long-dormant
+  face-api.js), whose model weights are published in the same npm package
+  as the script — unlike most of Vision, this only depends on a single
+  host (jsdelivr) rather than two.
 - **QR / Barcode** — uses the browser's built-in `BarcodeDetector` when
   available (Chrome/Edge/Android Chrome) — no network needed at all, works
   even on the car's own isolated AP. Falls back to the jsQR library (QR

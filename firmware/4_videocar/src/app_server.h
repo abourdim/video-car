@@ -523,6 +523,15 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           #codes-btn{grid-column:1/-1;}
           #codes-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
           #codes-btn.active{background:#D4E157;border-color:#D4E157;color:var(--bg);}
+          #pose-btn{grid-column:1/-1;}
+          #pose-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
+          #pose-btn.active{background:#7DD3FC;border-color:#7DD3FC;color:var(--bg);}
+          #hands-btn{grid-column:1/-1;}
+          #hands-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
+          #hands-btn.active{background:#FB923C;border-color:#FB923C;color:var(--bg);}
+          #expr-btn{grid-column:1/-1;}
+          #expr-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
+          #expr-btn.active{background:#FB7185;border-color:#FB7185;color:var(--bg);}
           #record-btn.active{background:var(--danger);border-color:var(--danger);color:var(--bg);}
           #record-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.04em;min-height:14px;}
           #record-status.active{color:var(--danger);}
@@ -595,6 +604,18 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <button id="codes-btn" onclick="toggleCodes()">&#9638; QR / Barcode</button>
         </div>
         <div id="codes-status">Uses your browser's built-in scanner when available &mdash; no internet needed for this one. Falls back to a QR-only library (needs internet once) on browsers without native support.</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button id="pose-btn" onclick="togglePose()">&#128694; Pose</button>
+        </div>
+        <div id="pose-status">Skeleton tracking (MoveNet) &mdash; needs internet once to load.</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button id="hands-btn" onclick="toggleHands()">&#9995; Hands</button>
+        </div>
+        <div id="hands-status">Hand/finger tracking &mdash; needs internet once to load.</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button id="expr-btn" onclick="toggleExpr()">&#128512; Expression</button>
+        </div>
+        <div id="expr-status">Reads facial expressions (happy/sad/surprised/...) &mdash; needs internet once to load.</div>
       </section>
 
       <section class="panel">
@@ -886,6 +907,12 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     var platesStatusEl = document.getElementById('plates-status');
     var codesBtn = document.getElementById('codes-btn');
     var codesStatusEl = document.getElementById('codes-status');
+    var poseBtn = document.getElementById('pose-btn');
+    var poseStatusEl = document.getElementById('pose-status');
+    var handsBtn = document.getElementById('hands-btn');
+    var handsStatusEl = document.getElementById('hands-status');
+    var exprBtn = document.getElementById('expr-btn');
+    var exprStatusEl = document.getElementById('expr-status');
     var overlay = document.getElementById('detect-overlay');
     var octx = overlay.getContext('2d');
     var workCanvas = document.createElement('canvas');
@@ -916,6 +943,19 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     var nativeBarcodeSupported = 'BarcodeDetector' in window;
     var barcodeDetector = null;
     var jsQRLoaded = false;
+
+    var poseModel = null, poseScriptsLoaded = false, posesRunning = false, poseLoopTimer = null;
+    var handModel = null, handScriptsLoaded = false, handsRunning = false, handLoopTimer = null;
+    var faceApiLoaded = false, exprRunning = false, exprLoopTimer = null;
+    var lastPoses = [], lastHands = [], lastExpressions = [];
+
+    // Standard COCO/MoveNet 17-keypoint skeleton edges, by keypoint name.
+    var POSE_EDGES = [
+      ['left_shoulder', 'right_shoulder'], ['left_shoulder', 'left_elbow'], ['left_elbow', 'left_wrist'],
+      ['right_shoulder', 'right_elbow'], ['right_elbow', 'right_wrist'],
+      ['left_shoulder', 'left_hip'], ['right_shoulder', 'right_hip'], ['left_hip', 'right_hip'],
+      ['left_hip', 'left_knee'], ['left_knee', 'left_ankle'], ['right_hip', 'right_knee'], ['right_knee', 'right_ankle']
+    ];
 
     function loadScript(src) {
       return new Promise(function (resolve, reject) {
@@ -1009,6 +1049,48 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       lastCodes.forEach(function (c) {
         var label = c.text.length > 28 ? (c.text.slice(0, 28) + '\u2026') : c.text;
         drawBox(c.x * scaleX, c.y * scaleY, c.w * scaleX, c.h * scaleY, '#D4E157', label);
+      });
+
+      octx.fillStyle = '#7DD3FC';
+      octx.strokeStyle = '#7DD3FC';
+      lastPoses.forEach(function (pose) {
+        var byName = {};
+        pose.keypoints.forEach(function (kp) { byName[kp.name] = kp; });
+        POSE_EDGES.forEach(function (edge) {
+          var a = byName[edge[0]], b = byName[edge[1]];
+          if (a && b && a.score > 0.3 && b.score > 0.3) {
+            octx.beginPath();
+            octx.moveTo(a.x * scaleX, a.y * scaleY);
+            octx.lineTo(b.x * scaleX, b.y * scaleY);
+            octx.stroke();
+          }
+        });
+        pose.keypoints.forEach(function (kp) {
+          if (kp.score > 0.3) {
+            octx.beginPath();
+            octx.arc(kp.x * scaleX, kp.y * scaleY, 3, 0, 2 * Math.PI);
+            octx.fill();
+          }
+        });
+      });
+
+      lastHands.forEach(function (hand) {
+        octx.fillStyle = '#FB923C';
+        hand.keypoints.forEach(function (kp) {
+          octx.beginPath();
+          octx.arc(kp.x * scaleX, kp.y * scaleY, 3, 0, 2 * Math.PI);
+          octx.fill();
+        });
+        var xs = hand.keypoints.map(function (kp) { return kp.x; });
+        var ys = hand.keypoints.map(function (kp) { return kp.y; });
+        var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+        var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+        drawBox(minX * scaleX, minY * scaleY, (maxX - minX) * scaleX, (maxY - minY) * scaleY, '#FB923C', hand.handedness);
+      });
+
+      lastExpressions.forEach(function (e) {
+        var b = e.box;
+        drawBox(b.x * scaleX, b.y * scaleY, b.width * scaleX, b.height * scaleY, '#FB7185', e.label);
       });
     }
 
@@ -1223,6 +1305,230 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         codesBtn.textContent = '\u25A6 QR / Barcode';
         codesBtn.classList.remove('active');
         codesStatusEl.textContent = 'Stopped.';
+      }
+    };
+
+    // --- Pose detection (MoveNet) ---
+    // @tensorflow-models/pose-detection, MoveNet model, 'tfjs' runtime (not
+    // 'mediapipe', which would need a separate @mediapipe/pose script+wasm
+    // bundle from yet another host) -- runs entirely on the already-loaded
+    // tf.js WebGL backend. Verified the CDN path against the real published
+    // npm tarball (same discipline as blazeface/tesseract/jsQR above).
+    function ensurePoseScript() {
+      if (poseScriptsLoaded) return Promise.resolve();
+      poseStatusEl.textContent = 'Loading pose model (needs internet on this network)...';
+      return loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js')
+        .then(function () { return loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js'); })
+        .then(function () { poseScriptsLoaded = true; });
+    }
+
+    function poseScanOnce() {
+      fetch(document.location.origin + '/capture?_=' + Date.now())
+        .then(function (r) { return r.blob(); })
+        .then(function (blob) { return createImageBitmap(blob); })
+        .then(function (bitmap) {
+          if (workCanvas.width !== bitmap.width || workCanvas.height !== bitmap.height) {
+            workCanvas.width = bitmap.width;
+            workCanvas.height = bitmap.height;
+          }
+          wctx.drawImage(bitmap, 0, 0);
+          lastFrameW = workCanvas.width;
+          lastFrameH = workCanvas.height;
+          return poseModel.estimatePoses(workCanvas);
+        })
+        .then(function (poses) {
+          if (!posesRunning) return;
+          lastPoses = poses;
+          redrawOverlay();
+          poseStatusEl.textContent = poses.length
+            ? (poses.length === 1 ? 'Tracking 1 person.' : ('Tracking ' + poses.length + ' people.'))
+            : 'Watching for a person...';
+        })
+        .catch(function () { /* transient network hiccup -- next tick retries */ });
+    }
+
+    window.togglePose = function () {
+      if (!posesRunning) {
+        poseBtn.disabled = true;
+        ensurePoseScript()
+          .then(function () {
+            if (poseModel) return;
+            poseStatusEl.textContent = 'Warming up the pose model...';
+            return poseDetection.createDetector(poseDetection.SupportedModels.MoveNet).then(function (m) { poseModel = m; });
+          })
+          .then(function () {
+            posesRunning = true;
+            poseBtn.disabled = false;
+            poseBtn.textContent = '\u23F9 Stop Pose';
+            poseBtn.classList.add('active');
+            poseStatusEl.textContent = 'Pose on -- tracking every ~500ms.';
+            poseLoopTimer = window.setInterval(poseScanOnce, 500);
+            poseScanOnce();
+          })
+          .catch(function (e) {
+            poseBtn.disabled = false;
+            poseStatusEl.textContent = "Couldn't load the pose model -- check this network has internet. " + e.message;
+          });
+      } else {
+        posesRunning = false;
+        window.clearInterval(poseLoopTimer);
+        lastPoses = [];
+        redrawOverlay();
+        poseBtn.textContent = '\uD83D\uDEB6 Pose';
+        poseBtn.classList.remove('active');
+        poseStatusEl.textContent = 'Stopped.';
+      }
+    };
+
+    // --- Hand tracking ---
+    // @tensorflow-models/hand-pose-detection, MediaPipeHands model, 'tfjs'
+    // runtime for the same reason as pose above (avoids the separate
+    // @mediapipe/hands script+wasm bundle). Gives 21 keypoints per hand.
+    function ensureHandScript() {
+      if (handScriptsLoaded) return Promise.resolve();
+      handsStatusEl.textContent = 'Loading hand model (needs internet on this network)...';
+      return loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js')
+        .then(function () { return loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.1/dist/hand-pose-detection.min.js'); })
+        .then(function () { handScriptsLoaded = true; });
+    }
+
+    function handScanOnce() {
+      fetch(document.location.origin + '/capture?_=' + Date.now())
+        .then(function (r) { return r.blob(); })
+        .then(function (blob) { return createImageBitmap(blob); })
+        .then(function (bitmap) {
+          if (workCanvas.width !== bitmap.width || workCanvas.height !== bitmap.height) {
+            workCanvas.width = bitmap.width;
+            workCanvas.height = bitmap.height;
+          }
+          wctx.drawImage(bitmap, 0, 0);
+          lastFrameW = workCanvas.width;
+          lastFrameH = workCanvas.height;
+          return handModel.estimateHands(workCanvas);
+        })
+        .then(function (hands) {
+          if (!handsRunning) return;
+          lastHands = hands;
+          redrawOverlay();
+          handsStatusEl.textContent = hands.length
+            ? hands.map(function (h) { return h.handedness; }).join(', ') + ' hand' + (hands.length > 1 ? 's' : '') + ' visible.'
+            : 'Watching for hands...';
+        })
+        .catch(function () { /* transient network hiccup -- next tick retries */ });
+    }
+
+    window.toggleHands = function () {
+      if (!handsRunning) {
+        handsBtn.disabled = true;
+        ensureHandScript()
+          .then(function () {
+            if (handModel) return;
+            handsStatusEl.textContent = 'Warming up the hand model...';
+            return handPoseDetection.createDetector(handPoseDetection.SupportedModels.MediaPipeHands, { runtime: 'tfjs' }).then(function (m) { handModel = m; });
+          })
+          .then(function () {
+            handsRunning = true;
+            handsBtn.disabled = false;
+            handsBtn.textContent = '\u23F9 Stop Hands';
+            handsBtn.classList.add('active');
+            handsStatusEl.textContent = 'Hands on -- tracking every ~500ms.';
+            handLoopTimer = window.setInterval(handScanOnce, 500);
+            handScanOnce();
+          })
+          .catch(function (e) {
+            handsBtn.disabled = false;
+            handsStatusEl.textContent = "Couldn't load the hand model -- check this network has internet. " + e.message;
+          });
+      } else {
+        handsRunning = false;
+        window.clearInterval(handLoopTimer);
+        lastHands = [];
+        redrawOverlay();
+        handsBtn.textContent = '\u270B Hands';
+        handsBtn.classList.remove('active');
+        handsStatusEl.textContent = 'Stopped.';
+      }
+    };
+
+    // --- Facial expression ---
+    // @vladmandic/face-api (actively-maintained fork of the long-unmaintained
+    // face-api.js) bundles its own internal tfjs copy, so it doesn't share
+    // the tf.js already loaded for the other models -- separate closure,
+    // no conflict, just some extra memory. Its model weight files are
+    // published inside the SAME npm package as the script (verified against
+    // the real tarball), so unlike coco-ssd/blazeface this only depends on
+    // ONE host (jsdelivr) rather than two, which is one less thing that can
+    // fail independently.
+    var FACE_API_BASE = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15';
+    function ensureFaceApi() {
+      if (faceApiLoaded) return Promise.resolve();
+      exprStatusEl.textContent = 'Loading expression model (needs internet on this network)...';
+      return loadScript(FACE_API_BASE + '/dist/face-api.js')
+        .then(function () {
+          return Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_BASE + '/model'),
+            faceapi.nets.faceExpressionNet.loadFromUri(FACE_API_BASE + '/model')
+          ]);
+        })
+        .then(function () { faceApiLoaded = true; });
+    }
+
+    function exprScanOnce() {
+      fetch(document.location.origin + '/capture?_=' + Date.now())
+        .then(function (r) { return r.blob(); })
+        .then(function (blob) { return createImageBitmap(blob); })
+        .then(function (bitmap) {
+          if (workCanvas.width !== bitmap.width || workCanvas.height !== bitmap.height) {
+            workCanvas.width = bitmap.width;
+            workCanvas.height = bitmap.height;
+          }
+          wctx.drawImage(bitmap, 0, 0);
+          lastFrameW = workCanvas.width;
+          lastFrameH = workCanvas.height;
+          return faceapi.detectAllFaces(workCanvas, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+        })
+        .then(function (detections) {
+          if (!exprRunning) return;
+          lastExpressions = detections.map(function (d) {
+            var top = 'neutral', topScore = 0;
+            for (var k in d.expressions) {
+              if (d.expressions[k] > topScore) { topScore = d.expressions[k]; top = k; }
+            }
+            return { box: d.detection.box, label: top + ' ' + Math.round(topScore * 100) + '%' };
+          });
+          redrawOverlay();
+          exprStatusEl.textContent = lastExpressions.length
+            ? lastExpressions.map(function (e) { return e.label; }).join(', ')
+            : 'Watching for a face...';
+        })
+        .catch(function () { /* transient network hiccup -- next tick retries */ });
+    }
+
+    window.toggleExpr = function () {
+      if (!exprRunning) {
+        exprBtn.disabled = true;
+        ensureFaceApi()
+          .then(function () {
+            exprRunning = true;
+            exprBtn.disabled = false;
+            exprBtn.textContent = '\u23F9 Stop Expression';
+            exprBtn.classList.add('active');
+            exprStatusEl.textContent = 'Expression on -- checking every ~500ms.';
+            exprLoopTimer = window.setInterval(exprScanOnce, 500);
+            exprScanOnce();
+          })
+          .catch(function (e) {
+            exprBtn.disabled = false;
+            exprStatusEl.textContent = "Couldn't load the expression model -- check this network has internet. " + e.message;
+          });
+      } else {
+        exprRunning = false;
+        window.clearInterval(exprLoopTimer);
+        lastExpressions = [];
+        redrawOverlay();
+        exprBtn.textContent = '\uD83D\uDE00 Expression';
+        exprBtn.classList.remove('active');
+        exprStatusEl.textContent = 'Stopped.';
       }
     };
 

@@ -103,6 +103,16 @@ cd video-car</code></pre>
         Systems panel call the sensor's <code>set_vflip</code>/<code>set_hmirror</code>
         live, so you can fix the camera's orientation for your chassis without
         reflashing.</li>
+      <li><strong>Pose detection</strong> &mdash; MoveNet skeleton tracking (light blue),
+        dots + limb lines over up to a few people at once.</li>
+      <li><strong>Hand tracking</strong> &mdash; MediaPipe Hands via TF.js's
+        <code>tfjs</code> runtime (avoids a separate MediaPipe script/wasm bundle from
+        yet another host), 21 keypoints per hand plus left/right handedness (orange).</li>
+      <li><strong>Facial expression</strong> &mdash; happy/sad/angry/surprised/etc. via
+        <code>@vladmandic/face-api</code> (an actively-maintained fork of the long-dormant
+        face-api.js), whose model weights are published in the same npm package as the
+        script &mdash; unlike most of Vision, this only depends on a single host
+        (jsdelivr) rather than two.</li>
       <li><strong>QR / Barcode</strong> &mdash; uses the browser's built-in
         <code>BarcodeDetector</code> when available (Chrome/Edge/Android Chrome) &mdash;
         no network needed at all, works even on the car's own isolated AP. Falls back to
