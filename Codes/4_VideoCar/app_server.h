@@ -514,9 +514,12 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
             border-radius:50%;background:radial-gradient(circle at 35% 30%,#6FE9DD,var(--cyan) 60%,#2FA79B 100%);
             box-shadow:0 2px 8px rgba(76,224,210,.45);}
 
-          #capture-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-          #capture-row button{height:44px;}
+          .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+          .btn-row button{height:44px;}
           #vision-btn{grid-column:1/-1;}
+          #plates-btn{grid-column:1/-1;}
+          #plates-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
+          #plates-btn.active{background:#E85DBF;border-color:#E85DBF;color:var(--bg);}
           #record-btn.active{background:var(--danger);border-color:var(--danger);color:var(--bg);}
           #record-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.04em;min-height:14px;}
           #record-status.active{color:var(--danger);}
@@ -577,15 +580,19 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
       <section class="panel">
         <div class="panel-label">Vision</div>
-        <div id="capture-row">
+        <div class="btn-row">
           <button id="vision-btn" onclick="toggleVision()">&#129302; AI Vision</button>
         </div>
         <div id="vision-status">Runs in your browser (TensorFlow.js) &mdash; detects objects (cyan) and faces (amber). Needs internet on this network to load the models once.</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button id="plates-btn" onclick="togglePlates()">&#128290; Plates</button>
+        </div>
+        <div id="plates-status">Reads text off detected vehicles (magenta) via OCR. Heuristic, low-res (320&times;240) camera &mdash; works best close, well-lit, and square-on to the plate.</div>
       </section>
 
       <section class="panel">
         <div class="panel-label">Capture</div>
-        <div id="capture-row">
+        <div class="btn-row">
           <button id="snapshot-btn" onclick="takeSnapshot()">&#128247; Snapshot</button>
           <button id="record-btn" onclick="toggleRecording()">&#9210; Record</button>
         </div>
@@ -868,16 +875,32 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
   (function () {
     var visionBtn = document.getElementById('vision-btn');
     var statusEl = document.getElementById('vision-status');
+    var platesBtn = document.getElementById('plates-btn');
+    var platesStatusEl = document.getElementById('plates-status');
     var overlay = document.getElementById('detect-overlay');
     var octx = overlay.getContext('2d');
     var workCanvas = document.createElement('canvas');
     var wctx = workCanvas.getContext('2d');
-    var objectModel = null;   // coco-ssd: whole-object categories (person, dog, chair, ...)
+    var plateCanvas = document.createElement('canvas');
+    var pctx = plateCanvas.getContext('2d');
+    var objectModel = null;   // coco-ssd: whole-object categories (person, dog, chair, ...),
+                               // also the only signal Plates has for "where's a vehicle"
     var faceModel = null;     // blazeface: purpose-built for faces/heads, which coco-ssd
                                // has no class for and handles poorly at close range
     var running = false;
     var loopTimer = null;
     var scriptsLoaded = false;
+
+    var platesRunning = false;
+    var plateLoopTimer = null;
+    var ocrWorker = null;
+    var ocrBusy = false;
+
+    // Last-known detections from each (possibly independent, possibly
+    // differently-timed) source, redrawn together so AI Vision and Plates
+    // can run simultaneously without erasing each other's boxes.
+    var lastObjects = [], lastFaces = [], lastPlates = [];
+    var lastFrameW = 320, lastFrameH = 240;
 
     function loadScript(src) {
       return new Promise(function (resolve, reject) {
@@ -907,6 +930,24 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         .then(function () { scriptsLoaded = true; });
     }
 
+    function ensureObjectModel() {
+      if (objectModel) return Promise.resolve();
+      return ensureScripts().then(function () { return cocoSsd.load(); }).then(function (m) { objectModel = m; });
+    }
+
+    // Tesseract.js is only loaded when Plates is actually turned on, since
+    // it's a separate multi-MB download (engine + language data) that most
+    // people trying object/face detection don't need. Verified against the
+    // real published npm tarball (registry.npmjs.org), not just its
+    // package.json metadata -- see the blazeface comment above for why that
+    // distinction matters.
+    var tesseractLoaded = false;
+    function ensureTesseract() {
+      if (tesseractLoaded) return Promise.resolve();
+      return loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js')
+        .then(function () { tesseractLoaded = true; });
+    }
+
     function resizeOverlay() {
       var vf = document.getElementById('viewfinder');
       overlay.width = vf.clientWidth;
@@ -923,27 +964,31 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       octx.fillText(label, x + 4, Math.max(0, y - 15));
     }
 
-    function drawDetections(objects, faces, srcW, srcH) {
+    function redrawOverlay() {
       resizeOverlay();
-      var scaleX = overlay.width / srcW;
-      var scaleY = overlay.height / srcH;
+      var scaleX = overlay.width / lastFrameW;
+      var scaleY = overlay.height / lastFrameH;
       octx.clearRect(0, 0, overlay.width, overlay.height);
       octx.lineWidth = 2;
       octx.font = '12px ui-monospace, monospace';
       octx.textBaseline = 'top';
 
-      objects.forEach(function (p) {
+      lastObjects.forEach(function (p) {
         var x = p.bbox[0] * scaleX, y = p.bbox[1] * scaleY;
         var w = p.bbox[2] * scaleX, h = p.bbox[3] * scaleY;
         drawBox(x, y, w, h, '#4CE0D2', p.class + ' ' + Math.round(p.score * 100) + '%');
       });
 
-      faces.forEach(function (f) {
+      lastFaces.forEach(function (f) {
         var x = f.topLeft[0] * scaleX, y = f.topLeft[1] * scaleY;
         var w = (f.bottomRight[0] - f.topLeft[0]) * scaleX;
         var h = (f.bottomRight[1] - f.topLeft[1]) * scaleY;
         var prob = Array.isArray(f.probability) ? f.probability[0] : f.probability;
         drawBox(x, y, w, h, '#FFB454', 'face ' + Math.round(prob * 100) + '%');
+      });
+
+      lastPlates.forEach(function (pl) {
+        drawBox(pl.x * scaleX, pl.y * scaleY, pl.w * scaleX, pl.h * scaleY, '#E85DBF', pl.text);
       });
     }
 
@@ -957,6 +1002,8 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
             workCanvas.height = bitmap.height;
           }
           wctx.drawImage(bitmap, 0, 0);
+          lastFrameW = workCanvas.width;
+          lastFrameH = workCanvas.height;
           return Promise.all([
             objectModel ? objectModel.detect(workCanvas) : Promise.resolve([]),
             faceModel ? faceModel.estimateFaces(workCanvas, false) : Promise.resolve([])
@@ -964,14 +1011,130 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         })
         .then(function (results) {
           if (!running) return;
-          var objects = results[0], faces = results[1];
-          drawDetections(objects, faces, workCanvas.width, workCanvas.height);
-          var seen = objects.map(function (p) { return p.class; });
-          if (faces.length) seen.push(faces.length === 1 ? 'a face' : (faces.length + ' faces'));
+          lastObjects = results[0];
+          lastFaces = results[1];
+          redrawOverlay();
+          var seen = lastObjects.map(function (p) { return p.class; });
+          if (lastFaces.length) seen.push(lastFaces.length === 1 ? 'a face' : (lastFaces.length + ' faces'));
           statusEl.textContent = seen.length ? ('Sees: ' + seen.join(', ')) : 'Watching... nothing recognized yet.';
         })
         .catch(function () { /* transient network hiccup -- next tick retries */ });
     }
+
+    // --- Plates: heuristic crop of a detected vehicle + real OCR ---
+    // There's no off-the-shelf, CDN-loadable "license plate detector" model
+    // like there is for objects (COCO-SSD) or faces (BlazeFace) -- so this
+    // is deliberately a simpler pipeline: reuse the object detector's
+    // car/truck/bus boxes (already computed for AI Vision, or computed here
+    // on demand if AI Vision isn't also running), crop the lower-center
+    // portion of the largest vehicle where a plate typically sits, upscale
+    // it (OCR accuracy improves a lot with more pixels), and run real OCR
+    // (Tesseract.js) restricted to plate-like characters. This is a
+    // heuristic, not a trained plate detector -- expect it to need the
+    // vehicle close, square-on, and well-lit, especially given the ESP32's
+    // 320x240 source resolution. OCR is also much heavier than object/face
+    // detection, so this runs on its own slower ~2.5s cadence rather than
+    // the ~500ms AI Vision loop, and only processes one vehicle per cycle.
+    function plateScanOnce() {
+      if (ocrBusy) return;  // OCR is slow -- never overlap two recognitions
+      fetch(document.location.origin + '/capture?_=' + Date.now())
+        .then(function (r) { return r.blob(); })
+        .then(function (blob) { return createImageBitmap(blob); })
+        .then(function (bitmap) {
+          if (workCanvas.width !== bitmap.width || workCanvas.height !== bitmap.height) {
+            workCanvas.width = bitmap.width;
+            workCanvas.height = bitmap.height;
+          }
+          wctx.drawImage(bitmap, 0, 0);
+          lastFrameW = workCanvas.width;
+          lastFrameH = workCanvas.height;
+          return objectModel ? objectModel.detect(workCanvas) : [];
+        })
+        .then(function (objects) {
+          if (!platesRunning) return;
+          var vehicles = objects.filter(function (p) {
+            return p.class === 'car' || p.class === 'truck' || p.class === 'bus';
+          });
+          if (!vehicles.length) {
+            lastPlates = [];
+            redrawOverlay();
+            platesStatusEl.textContent = 'No car/truck/bus in view to check for a plate.';
+            return;
+          }
+          // Largest box = closest/most likely to have a legible plate.
+          vehicles.sort(function (a, b) { return (b.bbox[2] * b.bbox[3]) - (a.bbox[2] * a.bbox[3]); });
+          var v = vehicles[0].bbox;  // [x, y, w, h]
+          // Heuristic plate region: bottom-center portion of the vehicle box.
+          var px = v[0] + v[2] * 0.20;
+          var py = v[1] + v[3] * 0.62;
+          var pw = v[2] * 0.60;
+          var ph = v[3] * 0.28;
+          if (pw < 4 || ph < 4) { platesStatusEl.textContent = 'Vehicle too small/far to check.'; return; }
+
+          var SCALE = 4;  // upscale the crop -- OCR needs more pixels than a 320x240 source gives
+          plateCanvas.width = Math.max(1, Math.round(pw * SCALE));
+          plateCanvas.height = Math.max(1, Math.round(ph * SCALE));
+          pctx.imageSmoothingEnabled = true;
+          pctx.drawImage(workCanvas, px, py, pw, ph, 0, 0, plateCanvas.width, plateCanvas.height);
+
+          ocrBusy = true;
+          platesStatusEl.textContent = 'Reading plate...';
+          return ensureTesseract()
+            .then(function () {
+              if (!ocrWorker) return Tesseract.createWorker('eng').then(function (w) {
+                ocrWorker = w;
+                return ocrWorker.setParameters({ tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-' });
+              });
+            })
+            .then(function () { return ocrWorker.recognize(plateCanvas); })
+            .then(function (result) {
+              var text = (result.data.text || '').replace(/[^A-Z0-9-]/g, '').trim();
+              var conf = result.data.confidence || 0;
+              if (text.length >= 4 && conf >= 40) {
+                lastPlates = [{ x: px, y: py, w: pw, h: ph, text: text + ' ' + Math.round(conf) + '%' }];
+                platesStatusEl.textContent = 'Plate: ' + text + ' (' + Math.round(conf) + '% confidence)';
+              } else {
+                lastPlates = [{ x: px, y: py, w: pw, h: ph, text: 'scanning' }];
+                platesStatusEl.textContent = 'Vehicle found, no confident plate read yet (' + Math.round(conf) + '% confidence).';
+              }
+              redrawOverlay();
+            })
+            .catch(function (e) {
+              platesStatusEl.textContent = "OCR error: " + e.message;
+            })
+            .then(function () { ocrBusy = false; });
+        })
+        .catch(function () { /* transient network hiccup -- next tick retries */ });
+    }
+
+    window.togglePlates = function () {
+      if (!platesRunning) {
+        platesBtn.disabled = true;
+        platesStatusEl.textContent = 'Loading plate reader (needs internet on this network)...';
+        ensureObjectModel()
+          .then(function () {
+            platesRunning = true;
+            platesBtn.disabled = false;
+            platesBtn.textContent = '\u23F9 Stop Plates';
+            platesBtn.classList.add('active');
+            platesStatusEl.textContent = 'Plates on -- checking every ~2.5s.';
+            plateLoopTimer = window.setInterval(plateScanOnce, 2500);
+            plateScanOnce();
+          })
+          .catch(function (e) {
+            platesBtn.disabled = false;
+            platesStatusEl.textContent = "Couldn't load the object model needed to find vehicles -- " + e.message;
+          });
+      } else {
+        platesRunning = false;
+        window.clearInterval(plateLoopTimer);
+        lastPlates = [];
+        redrawOverlay();
+        platesBtn.textContent = '\uD83D\uDD22 Plates';
+        platesBtn.classList.remove('active');
+        platesStatusEl.textContent = 'Stopped.';
+      }
+    };
 
     window.toggleVision = function () {
       if (!running) {
@@ -1018,7 +1181,9 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       } else {
         running = false;
         window.clearInterval(loopTimer);
-        octx.clearRect(0, 0, overlay.width, overlay.height);
+        lastObjects = [];
+        lastFaces = [];
+        redrawOverlay();
         visionBtn.textContent = '\uD83E\uDD16 AI Vision';
         visionBtn.classList.remove('active');
         statusEl.textContent = 'Stopped.';

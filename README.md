@@ -54,6 +54,13 @@ open `http://192.168.4.1` in a browser.
 - **Live flip/mirror toggles** — Flip and Mirror buttons in the Systems panel
   call the sensor's `set_vflip`/`set_hmirror` live, so you can fix the
   camera's orientation for your chassis without reflashing.
+- **Plates** — an experimental license-plate reader. There's no ready-made
+  plate-detector model like there is for objects/faces, so this reuses
+  COCO-SSD's car/truck/bus boxes, crops the likely plate region, and runs
+  real OCR (Tesseract.js) on it. Heuristic, not a trained detector, and
+  limited by the camera's 320×240 resolution — works best close, square-on,
+  and well-lit. Runs on its own slower ~2.5s cadence since OCR is much
+  heavier than object/face detection.
 - **AI Vision** — a toggleable live overlay detecting both objects (COCO-SSD)
   and faces (BlazeFace) right over the viewfinder, running entirely in the
   browser since the ESP32 can't run a neural net alongside everything else.

@@ -103,6 +103,13 @@ cd video-car</code></pre>
         Systems panel call the sensor's <code>set_vflip</code>/<code>set_hmirror</code>
         live, so you can fix the camera's orientation for your chassis without
         reflashing.</li>
+      <li><strong>Plates</strong> &mdash; an experimental license-plate reader. There's no
+        ready-made plate-detector model like there is for objects/faces, so this reuses
+        COCO-SSD's car/truck/bus boxes, crops the likely plate region, and runs real OCR
+        (Tesseract.js) on it. Heuristic, not a trained detector, and limited by the
+        camera's 320&times;240 resolution &mdash; works best close, square-on, and
+        well-lit. Runs on its own slower ~2.5s cadence since OCR is much heavier than
+        object/face detection.</li>
       <li><strong>AI Vision</strong> &mdash; a toggleable live overlay detecting both
         objects (COCO-SSD) and faces (BlazeFace) right over the viewfinder, running
         entirely in the browser since the ESP32 can't run a neural net alongside
