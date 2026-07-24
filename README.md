@@ -1,5 +1,12 @@
 # 🚗 VideoCar
 
+**Repo:** [github.com/abourdim/video-car](https://github.com/abourdim/video-car)
+
+```
+git clone https://github.com/abourdim/video-car.git
+cd video-car
+```
+
 Enhanced firmware + web control page for the keyestudio ESP32-CAM Video Smart
 Car. Built on top of keyestudio's stock sketch, with a virtual joystick,
 connection-loss failsafe, snapshot/video capture, a redesigned control UI, and

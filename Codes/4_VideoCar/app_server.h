@@ -649,6 +649,8 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
       <footer id="app-footer">
         <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" target="_blank" rel="noopener">&#128214; Official KS5017 Tutorial</a>
+        &nbsp;|&nbsp;
+        <a href="https://github.com/abourdim/video-car" target="_blank" rel="noopener">&#128187; Source on GitHub</a>
       </footer>
     <script>  
    // --- Settings persistence ---
