@@ -26,6 +26,10 @@ int channel = 11;       // Channel for AP Mode
 int hidden = 0;         // Probably leave at zero
 int maxconnection = 1;  // Only allow one device to connect
 
+// Station mode only: how long to wait for the router before giving up and
+// falling back to standalone AP mode. See the connect block in setup().
+#define STA_CONNECT_TIMEOUT_MS 20000
+
 // Camera Pin Definitions - Don't heckin' touch.
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
@@ -155,14 +159,32 @@ void setup() {
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
+    // Bounded wait. This loop used to be unbounded, so a wrong password, a
+    // router that's out of range, or a 5GHz-only SSID meant setup() never
+    // returned: no camera server, no AP, no way to reach the car at all
+    // without pulling it apart and attaching a serial cable. Time out
+    // instead and fall through to AP mode, which always works.
+    unsigned long staStart = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - staStart) < STA_CONNECT_TIMEOUT_MS) {
       delay(500);
       Serial.print(".");
     }
-    Serial.print("Camera Ready! Use 'http://");
-    Serial.print(WiFi.localIP());
-    Serial.println("' to connect");
-  } else {
+    Serial.println();
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.print("Camera Ready! Use 'http://");
+      Serial.print(WiFi.localIP());
+      Serial.println("' to connect");
+    } else {
+      Serial.println("Could not join the router within STA_CONNECT_TIMEOUT_MS.");
+      Serial.println("Falling back to standalone AP mode so the car stays reachable.");
+      WiFi.disconnect(true);
+      ap = 1;  // also stops loop()'s station-mode reconnect logic from running
+    }
+  }
+
+  // Not an 'else': if the station-mode attempt above timed out it sets ap = 1
+  // and falls through to here, so the car always ends up serving something.
+  if (ap) {
     // Setup Access Point
     Serial.println("ssid: " + (String)ssid);
     Serial.println("password: " + (String)password);
