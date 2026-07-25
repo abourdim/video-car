@@ -110,7 +110,12 @@ open `http://192.168.4.1` in a browser.
   - **Line** -- follows a dark line on a light floor, or a light one on a dark
     floor. The threshold adapts to whatever contrast the line actually has
     rather than assuming, and it refuses to lock on to a blank floor instead
-    of chasing sensor noise.
+    of chasing sensor noise. Tuned deliberately slow: the full loop (camera,
+    JPEG, WiFi, browser, HTTP back, I2C) has enough delay in it that a faster
+    or higher-gain loop goes unstable rather than going quicker. `LINE_SPEED`
+    is the knob to raise once it tracks reliably. Leave the Speed slider high
+    -- the autonomous modes cap themselves well below it, and the two
+    multiply.
   - **Colour chase** -- drives at the nearest blob of a chosen colour. Matching
     is done in rg-chromaticity, so a shadow falling across the target doesn't
     lose it. "Sample centre" picks the colour off whatever the car is pointed

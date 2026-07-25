@@ -658,7 +658,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <button id="cv-sample" onclick="sampleColour()">Sample centre</button>
           <label><input type="checkbox" id="cv-invert"> light line</label>
         </div>
-        <div id="cv-status">No models and no internet &mdash; pure pixel maths, so these run at full frame rate on the car's own WiFi. Line and Colour chase drive the car; give it floor space.</div>
+        <div id="cv-status">No models and no internet &mdash; pure pixel maths, so these keep up with the video stream on the car's own WiFi. Line and Colour chase drive the car; give it floor space, and leave the Speed slider high since these cap themselves well below it.</div>
       </section>
 
       <section class="panel">
@@ -2346,7 +2346,14 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       var LINE_BAND_TOP = 0.62, LINE_BAND_H = 0.30;  // look at the floor just ahead
       var LINE_MIN_CONTRAST = 18;   // reject a featureless floor rather than chase noise
       var LINE_MIN_PIX = 80;
-      var LINE_KP = 1.5, LINE_SPEED = 42, LINE_TURN_CUT = 0.65, LINE_MAX = 48;
+      // Tuned against a closed-loop simulation rather than guessed. The whole
+      // chain -- camera, JPEG, WiFi, browser, HTTP back, I2C -- runs somewhere
+      // around 150-350ms, and a proportional loop with that much delay in it
+      // goes unstable long before it goes fast. Raising LINE_KP makes it worse,
+      // not better: at 250ms, KP 2.5 loses the line where KP 0.9 holds to
+      // ~1cm. Speed is the real limiter, so this is deliberately slow.
+      // Raise LINE_SPEED once it tracks reliably; that is the knob to move.
+      var LINE_KP = 0.9, LINE_SPEED = 26, LINE_TURN_CUT = 0.65, LINE_MAX = 48;
       var CHASE_TOL = 0.10;         // rg-chromaticity radius
       var CHASE_MIN_PIX = 60, CHASE_TARGET_FILL = 0.06;
       var CHASE_KP_STEER = 1.5, CHASE_KP_THROTTLE = 2.2;
