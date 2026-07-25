@@ -37,6 +37,24 @@ each menu option does.
 Once flashed, connect to the `keyes1` WiFi network (password `88888888`) and
 open `http://192.168.4.1` in a browser.
 
+> ### ⚠️ The Vision features need internet -- the default AP mode has none
+>
+> Out of the box (`ap = 1`) the car hosts its own isolated `keyes1` network,
+> which isn't connected to anything. **Pose, Hand tracking, Facial expression,
+> Plates, AI Vision, and the jsQR fallback all download their models from a
+> CDN the first time you enable them, so on the car's own AP they will fail to
+> start.** Driving, the video stream, snapshots, and recording all work fine
+> there -- it's only the model-backed overlays that don't.
+>
+> To use them, set `ap = 0` near the top of `4_VideoCar.ino` along with your
+> router's `ssid`/`password`, reflash, and read the car's IP off the serial
+> monitor. Your phone or laptop then has the car and the internet at the same
+> time.
+>
+> The one exception is **QR / Barcode** on Chrome, Edge, or Android Chrome,
+> which uses the browser's built-in `BarcodeDetector` and needs no network at
+> all -- that one works on the car's own AP.
+
 ## Features (vs. the stock keyestudio sketch)
 
 - **Joystick control** — draggable on-screen joystick (`/joystick?x=&y=`),
