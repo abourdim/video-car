@@ -34,7 +34,6 @@ unsigned long lastCommandMillis = 0;
 #include "esp_camera.h"
 #include "img_converters.h"
 #include "Arduino.h"
-#include "lib/dl_lib.h"
 #include "SetMotor.h"
 
 
@@ -77,57 +76,25 @@ static esp_err_t capture_handler(httpd_req_t *req) {
   httpd_resp_set_type(req, "image/jpeg");
   httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
 
-  size_t out_len, out_width, out_height;
-  uint8_t *out_buf;
-  bool s;
-  {
-    size_t fb_len = 0;
-    if (fb->format == PIXFORMAT_JPEG) {
-      fb_len = fb->len;
-      res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
-    } else {
-      jpg_chunking_t jchunk = { req, 0 };
-      res = frame2jpg_cb(fb, 80, jpg_encode_stream, &jchunk) ? ESP_OK : ESP_FAIL;
-      httpd_resp_send_chunk(req, NULL, 0);
-      fb_len = jchunk.len;
-    }
-    esp_camera_fb_return(fb);
-    int64_t fr_end = esp_timer_get_time();
-    Serial.printf("JPG: %uB %ums\n", (uint32_t)(fb_len), (uint32_t)((fr_end - fr_start) / 1000));
-    return res;
+  // The camera is configured for PIXFORMAT_JPEG, so this is a straight
+  // pass-through of the frame buffer. (The stock sketch carried an unreachable
+  // RGB888 round-trip below this point -- dl_matrix3du_alloc / fmt2rgb888 /
+  // fmt2jpg_cb -- which was the only thing that needed lib/dl_lib*.h. Both are
+  // gone; if you ever set a non-JPEG pixel format, frame2jpg_cb here still
+  // handles the conversion.)
+  size_t fb_len = 0;
+  if (fb->format == PIXFORMAT_JPEG) {
+    fb_len = fb->len;
+    res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
+  } else {
+    jpg_chunking_t jchunk = { req, 0 };
+    res = frame2jpg_cb(fb, 80, jpg_encode_stream, &jchunk) ? ESP_OK : ESP_FAIL;
+    httpd_resp_send_chunk(req, NULL, 0);
+    fb_len = jchunk.len;
   }
-
-  dl_matrix3du_t *image_matrix = dl_matrix3du_alloc(1, fb->width, fb->height, 3);
-  if (!image_matrix) {
-    esp_camera_fb_return(fb);
-    Serial.println("dl_matrix3du_alloc failed");
-    httpd_resp_send_500(req);
-    return ESP_FAIL;
-  }
-
-  out_buf = image_matrix->item;
-  out_len = fb->width * fb->height * 3;
-  out_width = fb->width;
-  out_height = fb->height;
-
-  s = fmt2rgb888(fb->buf, fb->len, fb->format, out_buf);
   esp_camera_fb_return(fb);
-  if (!s) {
-    dl_matrix3du_free(image_matrix);
-    Serial.println("to rgb888 failed");
-    httpd_resp_send_500(req);
-    return ESP_FAIL;
-  }
-
-  jpg_chunking_t jchunk = { req, 0 };
-  s = fmt2jpg_cb(out_buf, out_len, out_width, out_height, PIXFORMAT_RGB888, 90, jpg_encode_stream, &jchunk);
-  dl_matrix3du_free(image_matrix);
-  if (!s) {
-    Serial.println("JPEG compression failed");
-    return ESP_FAIL;
-  }
-
   int64_t fr_end = esp_timer_get_time();
+  Serial.printf("JPG: %uB %ums\n", (uint32_t)(fb_len), (uint32_t)((fr_end - fr_start) / 1000));
   return res;
 }
 
@@ -137,7 +104,6 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   size_t _jpg_buf_len = 0;
   uint8_t *_jpg_buf = NULL;
   char *part_buf[64];
-  dl_matrix3du_t *image_matrix = NULL;
 
   static int64_t last_frame = 0;
   if (!last_frame) {
