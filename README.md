@@ -99,6 +99,16 @@ open `http://192.168.4.1` in a browser.
   browser since the ESP32 can't run a neural net alongside everything else.
   Needs internet access on the network the device is using to load the
   models the first time.
+- **Offline model cache** -- the Vision features load scripts from a CDN and
+  model weights from Google's model hosting, neither of which the car's own AP
+  can reach. Fetches to those hosts are now cached in IndexedDB and read back
+  transparently, so turning a feature on once somewhere with internet makes it
+  work from then on over the car's own WiFi. There's no download button to
+  press: it caches as it goes. The Offline panel shows what's stored and can
+  clear it. (Service workers and the Cache API would be the obvious tools here
+  and are both unavailable -- they require a secure context, and this page is
+  plain HTTP. Tesseract.js, used by Plates, loads from inside a Web Worker and
+  isn't covered.)
 - **Follow-me (autonomous)** -- the one feature here that actually drives the
   car. It takes COCO-SSD's bounding box for a chosen target (person, ball,
   dog, cat, bottle, chair) and runs a proportional controller on it:

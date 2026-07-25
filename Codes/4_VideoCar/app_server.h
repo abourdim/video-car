@@ -535,6 +535,9 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           #hands-btn{grid-column:1/-1;}
           #hands-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
           #hands-btn.active{background:#FB923C;border-color:#FB923C;color:var(--bg);}
+          #offline-btn{grid-column:1/-1;}
+          #offline-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
+          #offline-stats{margin-top:6px;font-size:11px;color:var(--cyan);letter-spacing:.02em;min-height:14px;}
           #follow-btn{grid-column:1/-1;}
           #follow-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
           #follow-btn.active{background:#4ADE80;border-color:#4ADE80;color:var(--bg);}
@@ -628,6 +631,15 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <button id="expr-btn" onclick="toggleExpr()">&#128512; Expression</button>
         </div>
         <div id="expr-status">Reads facial expressions (happy/sad/surprised/...) &mdash; needs internet once to load.</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-label">Offline</div>
+        <div id="offline-stats">Checking cache&hellip;</div>
+        <div id="offline-status">Model files are saved to this browser as they download. Turn the Vision features on once somewhere with internet and they'll work afterwards on the car's own WiFi, which has none.</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button id="offline-btn" onclick="clearOfflineCache()">&#128465; Clear cached models</button>
+        </div>
       </section>
 
       <section class="panel">
@@ -769,6 +781,167 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
      .then(function (r) { return r.json(); })
      .then(function (vals) { applySettings(vals); saveLocalSettings(); })
      .catch(function () { /* offline on load -- local cache (if any) stands */ });
+
+  // --- Offline asset cache ------------------------------------------------
+  // The whole Vision suite loads scripts from jsdelivr and model weights from
+  // Google's model hosting, and the car's own AP has no route to either. The
+  // obvious fix -- a service worker -- is unavailable: service workers and the
+  // Cache API are both restricted to secure contexts, and this page is served
+  // over plain http from 192.168.4.1. IndexedDB has no such restriction, so
+  // that's the store, and window.fetch is wrapped to read through it.
+  //
+  // It caches on read rather than needing a separate "download" step: use a
+  // feature once while you have internet and its files are kept, so the next
+  // time you're on the car's AP the same fetches are served locally. The
+  // script loaders below were switched from <script src> to fetch() for the
+  // same reason -- a src attribute never reaches this shim.
+  //
+  // Not covered: Tesseract.js (Plates) pulls its worker and language data from
+  // inside a Web Worker, which has its own fetch this patch can't see.
+  var VCOffline = (function () {
+    var DB_NAME = 'videocar-offline', STORE = 'assets';
+    var HOSTS = ['cdn.jsdelivr.net', 'storage.googleapis.com', 'tfhub.dev', 'www.kaggle.com'];
+    var ready = null;
+
+    function open() {
+      if (ready) return ready;
+      ready = new Promise(function (resolve) {
+        if (!window.indexedDB) return resolve(null);
+        var rq;
+        try { rq = indexedDB.open(DB_NAME, 1); } catch (e) { return resolve(null); }
+        rq.onupgradeneeded = function () {
+          if (!rq.result.objectStoreNames.contains(STORE)) rq.result.createObjectStore(STORE);
+        };
+        rq.onsuccess = function () { resolve(rq.result); };
+        rq.onerror = function () { resolve(null); };
+      });
+      return ready;
+    }
+
+    function store(mode) {
+      return open().then(function (db) {
+        if (!db) return null;
+        try { return db.transaction(STORE, mode).objectStore(STORE); } catch (e) { return null; }
+      });
+    }
+
+    function get(key) {
+      return store('readonly').then(function (s) {
+        if (!s) return null;
+        return new Promise(function (resolve) {
+          var r = s.get(key);
+          r.onsuccess = function () { resolve(r.result || null); };
+          r.onerror = function () { resolve(null); };
+        });
+      }).catch(function () { return null; });
+    }
+
+    function put(key, rec) {
+      return store('readwrite').then(function (s) {
+        if (!s) return;
+        return new Promise(function (resolve) {
+          var r = s.put(rec, key);
+          r.onsuccess = resolve;
+          // Quota exhaustion is expected on a phone with a full disk; a failed
+          // cache write must never break the feature that triggered it.
+          r.onerror = function () { resolve(); };
+        });
+      }).catch(function () {});
+    }
+
+    // Exact hostname match, not a substring search: a plain indexOf would also
+    // match a URL that merely mentions one of these hosts in its query string.
+    function cacheable(url) {
+      var h;
+      try { h = new URL(url, document.location.href).hostname; } catch (e) { return false; }
+      for (var i = 0; i < HOSTS.length; i++) if (h === HOSTS[i]) return true;
+      return false;
+    }
+
+    function stats() {
+      return store('readonly').then(function (s) {
+        if (!s) return { n: 0, bytes: 0, ok: false };
+        return new Promise(function (resolve) {
+          var n = 0, bytes = 0;
+          var cur = s.openCursor();
+          cur.onsuccess = function () {
+            var c = cur.result;
+            if (!c) return resolve({ n: n, bytes: bytes, ok: true });
+            n++;
+            if (c.value && c.value.blob) bytes += c.value.blob.size;
+            c.continue();
+          };
+          cur.onerror = function () { resolve({ n: n, bytes: bytes, ok: true }); };
+        });
+      }).catch(function () { return { n: 0, bytes: 0, ok: false }; });
+    }
+
+    function clear() {
+      return store('readwrite').then(function (s) {
+        if (!s) return;
+        return new Promise(function (resolve) {
+          var r = s.clear();
+          r.onsuccess = resolve;
+          r.onerror = resolve;
+        });
+      }).catch(function () {});
+    }
+
+    var nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+    if (nativeFetch && window.indexedDB) {
+      window.fetch = function (input, init) {
+        var url = (typeof input === 'string') ? input : (input && input.url);
+        if (!url || !cacheable(url)) return nativeFetch(input, init);
+        return get(url).then(function (rec) {
+          if (rec && rec.blob) {
+            return new Response(rec.blob, {
+              status: 200,
+              headers: { 'Content-Type': rec.type || 'application/octet-stream' }
+            });
+          }
+          return nativeFetch(input, init).then(function (r) {
+            if (r && r.ok) {
+              // Cache a clone so the caller still gets an unread body.
+              try {
+                r.clone().blob().then(function (b) {
+                  put(url, { blob: b, type: r.headers.get('Content-Type') || '', ts: Date.now() });
+                }).catch(function () {});
+              } catch (e) {}
+            }
+            return r;
+          });
+        });
+      };
+    }
+
+    return { stats: stats, clear: clear, cacheable: cacheable };
+  })();
+
+  (function () {
+    var statsEl = document.getElementById('offline-stats');
+    function human(b) {
+      if (b < 1024) return b + ' B';
+      if (b < 1048576) return (b / 1024).toFixed(0) + ' KB';
+      return (b / 1048576).toFixed(1) + ' MB';
+    }
+    window.refreshOfflineStats = function () {
+      VCOffline.stats().then(function (s) {
+        if (!s.ok) { statsEl.textContent = 'Offline cache unavailable in this browser.'; return; }
+        statsEl.textContent = s.n
+          ? (s.n + ' file' + (s.n === 1 ? '' : 's') + ' cached, ' + human(s.bytes) + ' \u2014 these features now work without internet.')
+          : 'Nothing cached yet.';
+      });
+    };
+    window.clearOfflineCache = function () {
+      VCOffline.clear().then(function () {
+        statsEl.textContent = 'Cache cleared.';
+        window.setTimeout(window.refreshOfflineStats, 800);
+      });
+    };
+    window.refreshOfflineStats();
+    // Re-read after a model load has had time to populate it.
+    window.setInterval(window.refreshOfflineStats, 10000);
+  })();
 
    // Functions to control streaming
   // Stream auto-recovery: an MJPEG <img> stream that drops (WiFi blip, phone
@@ -1006,14 +1179,22 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       ['left_hip', 'left_knee'], ['left_knee', 'left_ankle'], ['right_hip', 'right_knee'], ['right_knee', 'right_ankle']
     ];
 
+    // Fetched rather than appended as <script src>, so it goes through the
+    // offline cache shim above -- a <script src> would bypass window.fetch
+    // entirely and always hit the network. The code is then injected inline,
+    // with a sourceURL so devtools still attributes it to the real file.
     function loadScript(src) {
-      return new Promise(function (resolve, reject) {
-        var s = document.createElement('script');
-        s.src = src;
-        s.onload = resolve;
-        s.onerror = function () { reject(new Error('Failed to load ' + src)); };
-        document.head.appendChild(s);
-      });
+      return fetch(src)
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.text();
+        })
+        .then(function (code) {
+          var s = document.createElement('script');
+          s.text = code + '\n//# sourceURL=' + src;
+          document.head.appendChild(s);
+        })
+        .catch(function (e) { throw new Error('Failed to load ' + src + ' (' + e.message + ')'); });
     }
 
     function ensureScripts() {
@@ -1871,14 +2052,19 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
       function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
+      // Fetched, not <script src>, so it goes through the offline cache shim.
       function loadScript(src) {
-        return new Promise(function (resolve, reject) {
-          var s = document.createElement('script');
-          s.src = src;
-          s.onload = resolve;
-          s.onerror = function () { reject(new Error('Failed to load ' + src)); };
-          document.head.appendChild(s);
-        });
+        return fetch(src)
+          .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+          })
+          .then(function (code) {
+            var s = document.createElement('script');
+            s.text = code + '\n//# sourceURL=' + src;
+            document.head.appendChild(s);
+          })
+          .catch(function (e) { throw new Error('Failed to load ' + src + ' (' + e.message + ')'); });
       }
 
       // Reuses whatever AI Vision already pulled in, if it ran first.
