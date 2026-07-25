@@ -136,6 +136,15 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     return res;
   }
 
+  // Let the control page read frames out of this stream with a canvas. The
+  // page is served from port 80 and this stream from port 81, which browsers
+  // treat as separate origins -- without this header, drawImage() from the
+  // <img> taints the canvas and tf.browser.fromPixels() throws a SecurityError.
+  // That's why the vision loops historically polled /capture instead, which
+  // costs an extra full frame grab from the camera. With CORS the follow-me
+  // loop can reuse frames the stream is already sending.
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
   while (true) {
     fb = esp_camera_fb_get();
     if (!fb) {
@@ -487,7 +496,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           #viewfinder{position:relative;border-radius:8px;overflow:hidden;background:var(--panel-2);
             border:1px solid var(--border);aspect-ratio:4/3;}
           #stream{display:block;width:100%;height:100%;object-fit:cover;}
-          #detect-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+          #detect-overlay,#follow-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
           .vf-corner{position:absolute;width:22px;height:22px;border:2px solid var(--cyan);opacity:.85;}
           .vf-tl{top:8px;left:8px;border-right:0;border-bottom:0;}
           .vf-tr{top:8px;right:8px;border-left:0;border-bottom:0;}
@@ -526,6 +535,11 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           #hands-btn{grid-column:1/-1;}
           #hands-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
           #hands-btn.active{background:#FB923C;border-color:#FB923C;color:var(--bg);}
+          #follow-btn{grid-column:1/-1;}
+          #follow-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
+          #follow-btn.active{background:#4ADE80;border-color:#4ADE80;color:var(--bg);}
+          #follow-target{width:100%;margin-top:8px;height:38px;background:var(--panel-2);color:var(--fg);
+            border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit;font-size:13px;}
           #expr-btn{grid-column:1/-1;}
           #expr-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
           #expr-btn.active{background:#FB7185;border-color:#FB7185;color:var(--bg);}
@@ -578,6 +592,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         <div id="viewfinder">
           <img id="stream" src="">
           <canvas id="detect-overlay"></canvas>
+          <canvas id="follow-overlay"></canvas>
           <div class="vf-corner vf-tl"></div>
           <div class="vf-corner vf-tr"></div>
           <div class="vf-corner vf-bl"></div>
@@ -613,6 +628,22 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <button id="expr-btn" onclick="toggleExpr()">&#128512; Expression</button>
         </div>
         <div id="expr-status">Reads facial expressions (happy/sad/surprised/...) &mdash; needs internet once to load.</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-label">Autonomy</div>
+        <div class="btn-row">
+          <button id="follow-btn" onclick="toggleFollow()">&#127919; Follow Me</button>
+        </div>
+        <select id="follow-target">
+          <option value="person">Follow: person</option>
+          <option value="sports ball">Follow: ball</option>
+          <option value="dog">Follow: dog</option>
+          <option value="cat">Follow: cat</option>
+          <option value="bottle">Follow: bottle</option>
+          <option value="chair">Follow: chair</option>
+        </select>
+        <div id="follow-status">Drives the car on its own to keep the target centred and at a fixed distance. Any manual input disarms it. Give it clear floor space before arming.</div>
       </section>
 
       <section class="panel">
@@ -745,10 +776,31 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
   // 'error'. So we watch it and force a reconnect if it's ever broken, and
   // also periodically nudge it if the browser marked it errored.
   var source = document.getElementById('stream');
+  var streamFails = 0;
+  var streamCors = true;
   function startStream() {
+    // crossorigin lets the follow-me loop grab frames straight off this <img>
+    // with drawImage() instead of polling /capture for a second copy of a
+    // frame the camera is already sending. The firmware sets a matching
+    // Access-Control-Allow-Origin on the stream.
+    //
+    // The failure mode matters here: if that header is ever missing, the
+    // browser refuses the image outright rather than merely tainting the
+    // canvas -- which would kill the video feed, not just follow-me. So after
+    // two consecutive load failures we drop crossorigin and reconnect plain,
+    // and follow-me falls back to its /capture path. Video always wins.
+    if (streamCors) source.setAttribute('crossorigin', 'anonymous');
+    else source.removeAttribute('crossorigin');
     source.src = document.location.origin + ':81/stream?_=' + Date.now();
   }
+  source.addEventListener('load', function () { streamFails = 0; });
   source.addEventListener('error', function () {
+    streamFails++;
+    if (streamCors && streamFails >= 2) {
+      streamCors = false;
+      streamFails = 0;
+      window.__followNoCors = true;
+    }
     setTimeout(startStream, 1000);
   });
   startStream();
@@ -1630,6 +1682,10 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
   //Keypress Events
    document.addEventListener('keydown',function(keyon){
     keyon.preventDefault();
+      // A human touching the controls always outranks the autonomous loop.
+      if (keyon.keyCode == '38' || keyon.keyCode == '40' || keyon.keyCode == '37' || keyon.keyCode == '39') {
+        disarmFollow('Manual input \u2014 follow disarmed.');
+      }
       if ((keyon.keyCode == '38') && (!keybackward) && (!keyforward)) {keyforward = 1;}
       else if ((keyon.keyCode == '40') && (!keyforward) && (!keybackward)){keybackward = 1;}
       else if ((keyon.keyCode == '37') && (!keyright) && (!keyleft)){keyleft = 1;}
@@ -1657,13 +1713,25 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     // can see them; the joystick block assigns them).
     var joyActive = false;
     var joyX = 0, joyY = 0;  // -100..100, x: + right, y: + forward
+    // Same idea for the autonomous follow-me block: it computes a steer and
+    // throttle and parks them here, and this one loop forwards them. Adding a
+    // third timer of its own is exactly the bug the comment above describes,
+    // so the autonomous controller is a *source of setpoints*, never a sender.
+    var followActive = false;
+    var followX = 0, followY = 0;
+    var disarmFollow = function () {};  // replaced by the follow-me block below
     window.setInterval(function(){
-      // Joystick wins while it's actually being dragged; releasing it clears
-      // joyActive, which drops us back to the keyboard/D-pad branch below --
-      // and that branch sends command 5 (stop) when no key is held, so the
-      // car still stops on release without needing a special-case send here.
+      // Priority: a hand on the joystick beats the autonomous loop, which
+      // beats the D-pad. Releasing the joystick clears joyActive, which drops
+      // us back down -- and the D-pad branch sends command 5 (stop) when no
+      // key is held, so the car still stops on release without needing a
+      // special-case send here.
       if (joyActive) {
         fetch(document.location.origin + '/joystick?x=' + joyX + '&y=' + joyY).catch(function(){});
+        return;
+      }
+      if (followActive) {
+        fetch(document.location.origin + '/joystick?x=' + followX + '&y=' + followY).catch(function(){});
         return;
       }
       if (((keyforward) && (keyleft)) || ((keybackward) && (keyleft)) || (keyleft)) {currentcommand = 3;} // Turn Left
@@ -1730,6 +1798,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       }
 
       base.addEventListener('pointerdown', function (e) {
+        disarmFollow('Joystick taken \u2014 follow disarmed.');
         joyActive = true;
         base.setPointerCapture(e.pointerId);
         updateFromPoint(e.clientX, e.clientY);
@@ -1746,6 +1815,274 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       base.addEventListener('pointerup', endDrag);
       base.addEventListener('pointercancel', endDrag);
       base.addEventListener('pointerleave', function () { if (joyActive) endDrag(); });
+    })();
+
+    // --- Follow-me: closed-loop autonomous following -----------------------
+    // The first feature here that *drives* rather than just annotating the
+    // picture. COCO-SSD gives a bounding box for the chosen target class; a
+    // proportional controller turns that into a steer and a throttle:
+    //
+    //   steer    <- how far the box centre sits from the frame centre
+    //   throttle <- how tall the box is vs. TARGET_FILL (a stand-in for range;
+    //               a bigger box means the target is closer)
+    //
+    // Both land in followX/followY, which the single control loop above
+    // forwards to /joystick -- the same endpoint manual driving already uses,
+    // so the firmware needs no new handler and the 500ms failsafe covers this
+    // mode for free.
+    //
+    // Safety, since this is the one feature that moves the car by itself:
+    //   * disarmed by default; any manual input (arrow key, D-pad, joystick)
+    //     disarms it immediately, and manual always outranks it in the loop
+    //   * output capped at FOLLOW_MAX / FOLLOW_MAX_REV regardless of the Speed
+    //     slider, which the firmware still applies on top as a second ceiling
+    //   * reverse capped harder than forward -- there is no rear sensor
+    //   * target lost -> coast to a stop after FOLLOW_LOST_MS, fully disarm
+    //     after FOLLOW_GIVEUP_MS, rather than wander off hunting for it
+    //   * tab hidden, page hidden, or any error -> disarm
+    (function () {
+      var followBtn = document.getElementById('follow-btn');
+      var statusEl = document.getElementById('follow-status');
+      var targetSel = document.getElementById('follow-target');
+      var overlay = document.getElementById('follow-overlay');
+      var octx = overlay.getContext('2d');
+      var vf = document.getElementById('viewfinder');
+      var streamImg = document.getElementById('stream');
+
+      // --- tuning knobs -- these are the numbers to play with on real carpet
+      var KP_STEER = 1.6;          // gain: horizontal error -> steer
+      var KP_THROTTLE = 1.8;       // gain: range error -> throttle
+      var TARGET_FILL = 0.55;      // keep the box this tall relative to frame
+      var DEADBAND_X = 0.10;       // ignore horizontal error under this
+      var DEADBAND_D = 0.12;       // ignore range error under this
+      var FOLLOW_MAX = 55;         // max forward magnitude (0..100)
+      var FOLLOW_MAX_REV = 30;     // max reverse magnitude -- deliberately lower
+      var MIN_SCORE = 0.55;        // ignore weak detections
+      var FOLLOW_LOST_MS = 700;    // no target this long -> stop moving
+      var FOLLOW_GIVEUP_MS = 3000; // no target this long -> disarm
+
+      var scriptsLoaded = false, model = null;
+      var armed = false, busy = false;
+      var lastSeen = 0, lastBox = null;
+      var frameW = 320, frameH = 240;
+      var grab = document.createElement('canvas');
+      var gctx = grab.getContext('2d', { willReadFrequently: true });
+      var useCapture = false, probed = false;
+
+      function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+      function loadScript(src) {
+        return new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.onload = resolve;
+          s.onerror = function () { reject(new Error('Failed to load ' + src)); };
+          document.head.appendChild(s);
+        });
+      }
+
+      // Reuses whatever AI Vision already pulled in, if it ran first.
+      function ensureScripts() {
+        if (scriptsLoaded) return Promise.resolve();
+        if (window.tf && window.cocoSsd) { scriptsLoaded = true; return Promise.resolve(); }
+        statusEl.textContent = 'Loading the object model (needs internet on this network)...';
+        return Promise.resolve()
+          .then(function () { return window.tf ? null : loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js'); })
+          .then(function () { return window.cocoSsd ? null : loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js'); })
+          .then(function () { scriptsLoaded = true; });
+      }
+
+      // Preferred path: draw straight off the live MJPEG <img>, which costs
+      // the ESP32 nothing -- the frame is already on the wire. That needs the
+      // stream's CORS header to avoid tainting the canvas, so rather than
+      // assume it worked we verify once with a 1-pixel read and fall back to
+      // polling /capture (same origin, always safe, but makes the camera
+      // produce a second frame) if the browser objects.
+      function grabFrame() {
+        if (!useCapture && !window.__followNoCors) {
+          var w = streamImg.naturalWidth || 0, h = streamImg.naturalHeight || 0;
+          if (!w || !h) return Promise.resolve(null);
+          frameW = w; frameH = h;
+          grab.width = w; grab.height = h;
+          try {
+            gctx.drawImage(streamImg, 0, 0, w, h);
+            if (!probed) { gctx.getImageData(0, 0, 1, 1); probed = true; }
+            return Promise.resolve(grab);
+          } catch (e) {
+            useCapture = true; probed = true;
+          }
+        } else if (!useCapture) {
+          useCapture = true;
+        }
+        return fetch(document.location.origin + '/capture?_=' + Date.now())
+          .then(function (r) { return r.blob(); })
+          .then(function (b) {
+            return new Promise(function (resolve, reject) {
+              var img = new Image();
+              var url = URL.createObjectURL(b);
+              img.onload = function () {
+                frameW = img.naturalWidth; frameH = img.naturalHeight;
+                grab.width = frameW; grab.height = frameH;
+                gctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+                resolve(grab);
+              };
+              img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('frame decode failed')); };
+              img.src = url;
+            });
+          });
+      }
+
+      // Proportional control. Deadbands matter more than the gains here: without
+      // them the car hunts left-right forever around the centre because the
+      // motors have a stiction floor the controller can't see.
+      function control(box) {
+        var cx = box[0] + box[2] / 2;
+        var errX = (cx - frameW / 2) / (frameW / 2);        // -1 left .. +1 right
+        var steer = Math.abs(errX) < DEADBAND_X ? 0 : clamp(errX * KP_STEER, -1, 1);
+
+        var fill = box[3] / frameH;
+        var errD = (TARGET_FILL - fill) / TARGET_FILL;      // + = too far away
+        var throttle = Math.abs(errD) < DEADBAND_D ? 0 : clamp(errD * KP_THROTTLE, -1, 1);
+
+        followX = Math.round(steer * FOLLOW_MAX);
+        followY = Math.round(throttle * (throttle >= 0 ? FOLLOW_MAX : FOLLOW_MAX_REV));
+      }
+
+      function draw() {
+        overlay.width = vf.clientWidth;
+        overlay.height = vf.clientHeight;
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+        if (!armed) return;
+        var sx = overlay.width / frameW, sy = overlay.height / frameH;
+        var midX = overlay.width / 2;
+
+        // the corridor inside which steer stays at zero
+        octx.strokeStyle = 'rgba(74,222,128,0.30)';
+        octx.setLineDash([5, 5]);
+        octx.lineWidth = 1;
+        var half = DEADBAND_X * overlay.width / 2;
+        octx.beginPath();
+        octx.moveTo(midX - half, 0); octx.lineTo(midX - half, overlay.height);
+        octx.moveTo(midX + half, 0); octx.lineTo(midX + half, overlay.height);
+        octx.stroke();
+        octx.setLineDash([]);
+
+        if (lastBox) {
+          var x = lastBox[0] * sx, y = lastBox[1] * sy;
+          var w = lastBox[2] * sx, h = lastBox[3] * sy;
+          octx.strokeStyle = '#4ADE80';
+          octx.lineWidth = 2;
+          octx.strokeRect(x, y, w, h);
+          octx.beginPath();
+          octx.arc(x + w / 2, y + h / 2, 4, 0, Math.PI * 2);
+          octx.fillStyle = '#4ADE80';
+          octx.fill();
+          // line from frame centre to target centre -- the error, drawn
+          octx.beginPath();
+          octx.moveTo(midX, overlay.height - 8);
+          octx.lineTo(x + w / 2, y + h / 2);
+          octx.strokeStyle = 'rgba(74,222,128,0.45)';
+          octx.lineWidth = 1;
+          octx.stroke();
+        }
+
+        // steer / throttle readout bars, bottom-left
+        var bw = 70, bh = 5, bx = 10, by = overlay.height - 22;
+        octx.fillStyle = 'rgba(255,255,255,0.15)';
+        octx.fillRect(bx, by, bw, bh);
+        octx.fillRect(bx, by + 9, bw, bh);
+        octx.fillStyle = '#4ADE80';
+        octx.fillRect(bx + bw / 2, by, (followX / 100) * (bw / 2), bh);
+        octx.fillRect(bx + bw / 2, by + 9, (followY / 100) * (bw / 2), bh);
+      }
+
+      function disarm(msg) {
+        armed = false;
+        followActive = false;
+        followX = 0; followY = 0;
+        lastBox = null;
+        followBtn.textContent = '\uD83C\uDFAF Follow Me';
+        followBtn.classList.remove('active');
+        targetSel.disabled = false;
+        if (msg) statusEl.textContent = msg;
+        draw();
+      }
+      disarmFollow = disarm;  // manual-override hook used by the control loop
+
+      function tick() {
+        if (!armed) return;
+        if (busy) { window.setTimeout(tick, 30); return; }
+        busy = true;
+        grabFrame()
+          .then(function (cv) { return cv ? model.detect(cv) : null; })
+          .then(function (preds) {
+            if (!armed) return;
+            var want = targetSel.value, best = null;
+            if (preds) {
+              for (var i = 0; i < preds.length; i++) {
+                var p = preds[i];
+                if (p.class !== want || p.score < MIN_SCORE) continue;
+                if (!best || p.bbox[2] * p.bbox[3] > best.bbox[2] * best.bbox[3]) best = p;
+              }
+            }
+            if (best) {
+              lastSeen = Date.now();
+              lastBox = best.bbox;
+              control(best.bbox);
+              statusEl.textContent = 'Tracking ' + want + ' ' + Math.round(best.score * 100) + '% \u2014 steer '
+                + followX + ', throttle ' + followY + (useCapture ? ' (/capture fallback)' : '');
+            } else {
+              var gone = Date.now() - lastSeen;
+              lastBox = null;
+              if (gone > FOLLOW_LOST_MS) { followX = 0; followY = 0; }
+              if (gone > FOLLOW_GIVEUP_MS) {
+                disarm('Lost the ' + want + ' \u2014 disarmed.');
+                return;
+              }
+              statusEl.textContent = 'Searching for a ' + want + '\u2026';
+            }
+            draw();
+          })
+          .catch(function (e) { disarm('Follow stopped after an error: ' + e.message); })
+          .then(function () {
+            busy = false;
+            if (armed) window.setTimeout(tick, 0);
+          });
+      }
+
+      window.toggleFollow = function () {
+        if (armed) { disarm('Stopped.'); return; }
+        followBtn.disabled = true;
+        ensureScripts()
+          .then(function () {
+            statusEl.textContent = 'Warming up the object model\u2026';
+            if (model) return;
+            return cocoSsd.load().then(function (m) { model = m; });
+          })
+          .then(function () {
+            followBtn.disabled = false;
+            if (!model) { statusEl.textContent = 'Could not load the object model.'; return; }
+            armed = true;
+            followActive = true;
+            followX = 0; followY = 0;
+            lastSeen = Date.now();
+            targetSel.disabled = true;
+            followBtn.textContent = '\u23F9 Stop Following';
+            followBtn.classList.add('active');
+            statusEl.textContent = 'Armed \u2014 looking for a ' + targetSel.value + '\u2026';
+            tick();
+          })
+          .catch(function (e) {
+            followBtn.disabled = false;
+            disarm('Could not start: ' + e.message);
+          });
+      };
+
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden && armed) disarm('Tab hidden \u2014 follow disarmed.');
+      });
+      window.addEventListener('pagehide', function () { if (armed) disarm(); });
     })();
     </script>
     </body>

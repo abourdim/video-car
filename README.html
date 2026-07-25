@@ -148,6 +148,19 @@ cd video-car</code></pre>
         entirely in the browser since the ESP32 can't run a neural net alongside
         everything else. Needs internet access on the network the device is using to
         load the models the first time.</li>
+      <li><strong>Follow-me (autonomous)</strong> &mdash; the one feature here that
+        actually drives the car. It takes COCO-SSD's bounding box for a chosen target
+        (person, ball, dog, cat, bottle, chair) and runs a proportional controller on it:
+        horizontal offset from frame centre becomes steering, box height becomes throttle,
+        and both go out over the same <code>/joystick</code> endpoint manual driving uses
+        &mdash; so the firmware needed no new handler and the 500ms failsafe covers this
+        mode too. Frames come off the live MJPEG stream rather than a second
+        <code>/capture</code> poll, which is what makes a real control loop possible.
+        Disarmed by default; touching an arrow key, the D-pad or the joystick takes over
+        instantly. Output is capped well below full speed (reverse capped harder, since
+        there's no rear sensor), and losing the target stops the car and then disarms
+        rather than sending it hunting. Needs internet once to load the model.
+        <strong>Give the car clear floor space before arming it.</strong></li>
       <li><strong>Snapshot &amp; video recording</strong> &mdash; a Capture panel
         downloads a still JPEG, or records a <code>.webm</code>/<code>.mp4</code>
         client-side (Canvas + MediaRecorder pulling frames from <code>/capture</code>)

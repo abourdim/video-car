@@ -99,6 +99,19 @@ open `http://192.168.4.1` in a browser.
   browser since the ESP32 can't run a neural net alongside everything else.
   Needs internet access on the network the device is using to load the
   models the first time.
+- **Follow-me (autonomous)** -- the one feature here that actually drives the
+  car. It takes COCO-SSD's bounding box for a chosen target (person, ball,
+  dog, cat, bottle, chair) and runs a proportional controller on it:
+  horizontal offset from frame centre becomes steering, box height becomes
+  throttle, and both go out over the same `/joystick` endpoint manual driving
+  uses -- so the firmware needed no new handler and the 500ms failsafe covers
+  this mode too. Frames come off the live MJPEG stream rather than a second
+  `/capture` poll, which is what makes a real control loop possible.
+  Disarmed by default; touching an arrow key, the D-pad or the joystick takes
+  over instantly. Output is capped well below full speed (reverse capped
+  harder, since there's no rear sensor), and losing the target stops the car
+  and then disarms rather than sending it hunting. Needs internet once to
+  load the model. **Give the car clear floor space before arming it.**
 - **Snapshot & video recording** — a Capture panel downloads a still JPEG, or
   records a `.webm`/`.mp4` client-side (Canvas + MediaRecorder pulling frames
   from `/capture`) since the ESP32 itself can't encode video or write to an
