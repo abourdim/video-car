@@ -20,6 +20,27 @@ int hmirrorState = 1;
 // see the load in setup() and the prefs.putInt() calls in cmd_handler below.
 Preferences prefs;
 
+// Turn-in-place rate, as a percentage of the Speed slider. Turns used to be
+// hardcoded at PWM 150 and ignored the slider entirely. A full-speed spin is
+// hard to control, so the slider is scaled down here: at the default slider
+// position (speed = 248) this comes out at 148, i.e. the value the stock
+// sketch hardcoded, so the out-of-the-box feel is unchanged.
+#define TURN_SPEED_PERCENT 60
+
+// Apply the trim offset to one wheel's PWM magnitude and clamp to range.
+// Trim compensates for one motor being physically stronger than the other, so
+// it's a per-motor offset that applies the same way regardless of which
+// direction that motor happens to be turning: M1 gets -trim, M2 gets +trim.
+// A wheel that isn't being driven stays stopped, so trim can't make the car
+// creep when the throttle is at zero.
+static inline int trimmed(int base, int offset) {
+  if (base <= 0) return 0;
+  int v = base + offset;
+  if (v < 0) v = 0;
+  if (v > 255) v = 255;
+  return v;
+}
+
 // Timestamp (millis) of the last movement command received from a client.
 // loop() in the .ino watches this and force-stops the car if it goes stale,
 // so the car doesn't keep driving after WiFi drops or the browser disconnects.
@@ -267,13 +288,8 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
     if (val == 1)  //Forward
     {
 
-      int speed1 = 0, speed2 = 0;
-      speed1 = speed - trim;
-      speed2 = speed + trim;
-      if (speed1 < 0) speed1 = 0;
-      if (speed2 < 0) speed2 = 0;
-      if (speed1 > 255) speed1 = 255;
-      if (speed2 > 255) speed2 = 255;
+      int speed1 = trimmed(speed, -trim);
+      int speed2 = trimmed(speed, +trim);
 //      Serial.println("Forward");
       actstate = fwd;  // Set state to modify left & right behavior while moving.
                        // Car_forward();
@@ -283,13 +299,8 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
       i2c_Write(M2_IN, speed2);
     } else if (val == 2)  //Backward
     {
-      int speed1 = 0, speed2 = 0;
-      speed1 = speed - trim;
-      speed2 = speed + trim;
-      if (speed1 < 0) speed1 = 0;
-      if (speed2 < 0) speed2 = 0;
-      if (speed1 > 255) speed1 = 255;
-      if (speed2 > 255) speed2 = 255;
+      int speed1 = trimmed(speed, -trim);
+      int speed2 = trimmed(speed, +trim);
 //      Serial.println("Backward");
       actstate = rev;  // Set state to modify left & right behavior while moving.
       i2c_Write(M1_PWM, 0);
@@ -299,18 +310,24 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
     } else if (val == 3)  //Left
     {
       actstate = trn;  // must be non-stp or the failsafe in loop() ignores us
-      i2c_Write(M1_PWM, 150);
+      int turnBase = (speed * TURN_SPEED_PERCENT) / 100;
+      int speed1 = trimmed(turnBase, -trim);
+      int speed2 = trimmed(turnBase, +trim);
+      i2c_Write(M1_PWM, speed1);
       i2c_Write(M1_IN, 0);
-      i2c_Write(M2_PWM, 150);
+      i2c_Write(M2_PWM, speed2);
       i2c_Write(M2_IN, 0);
     } else if (val == 4)  //Right
     {
       actstate = trn;  // must be non-stp or the failsafe in loop() ignores us
       // Car_right();
+      int turnBase = (speed * TURN_SPEED_PERCENT) / 100;
+      int speed1 = trimmed(turnBase, -trim);
+      int speed2 = trimmed(turnBase, +trim);
       i2c_Write(M1_PWM, 0);
-      i2c_Write(M1_IN, 150);
+      i2c_Write(M1_IN, speed1);
       i2c_Write(M2_PWM, 0);
-      i2c_Write(M2_IN, 150);
+      i2c_Write(M2_IN, speed2);
     } 
      else if(val == 5) //Stop
     {
@@ -376,12 +393,18 @@ static esp_err_t joystick_handler(httpd_req_t *req) {
   if (s2 > 100) s2 = 100;
   else if (s2 < -100) s2 = -100;
 
-  int cap = speed;  // reuse the existing speed slider (0..248) as max PWM
-  if (cap <= 0) cap = 248;
-  int pwm1 = (abs(s1) * cap) / 100;
-  int pwm2 = (abs(s2) * cap) / 100;
-  if (pwm1 > 255) pwm1 = 255;
-  if (pwm2 > 255) pwm2 = 255;
+  // Reuse the existing Speed slider (0..248) as the max PWM. Note there is
+  // deliberately no "if (cap <= 0) cap = 248" fallback here any more: that
+  // made a slider sitting at 0 mean *full speed* on the joystick while
+  // meaning stopped on the D-pad. Zero now means zero for both.
+  int cap = speed;
+  if (cap < 0) cap = 0;
+  else if (cap > 255) cap = 255;
+  // Trim applies here too, so the joystick drifts the same way the D-pad does
+  // once you've dialled it in -- previously the slider silently did nothing
+  // in joystick mode.
+  int pwm1 = trimmed((abs(s1) * cap) / 100, -trim);
+  int pwm2 = trimmed((abs(s2) * cap) / 100, +trim);
 
   if (jx == 0 && jy == 0) {
     Car_stop();
