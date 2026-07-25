@@ -1773,6 +1773,15 @@ static esp_err_t index_handler(httpd_req_t *req) {
 void startCameraServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
+  // The control page holds several keep-alive connections open at once (the
+  // 100ms drive loop, the /status heartbeat, and -- with Vision or recording
+  // enabled -- a steady stream of /capture pulls). Without LRU purging, once
+  // max_open_sockets fills up the server simply refuses new connections and
+  // the page appears to hang. Purging the least-recently-used socket instead
+  // keeps it responsive. Set before both httpd_start() calls so the stream
+  // server on port 81 inherits it too.
+  config.lru_purge_enable = true;
+
   httpd_uri_t index_uri = {
     .uri = "/",
     .method = HTTP_GET,
