@@ -1644,19 +1644,37 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       else if ((keyoff.keyCode == '37') || (keyoff.keyCode == '39')) {keyleft = 0;keyright = 0;}
     });
     //Send Commands to Scout
+    // ONE arbitrated control loop for both input methods. There used to be
+    // two independent 100ms timers -- this one and the joystick's -- and each
+    // sent a STOP whenever *its own* input was idle. So dragging the joystick
+    // was interrupted by this loop's stop command 10x/sec, and holding the
+    // D-pad was interrupted by the joystick loop's x=0&y=0 the same way; both
+    // drive modes ran at roughly half duty cycle and felt jerky.
+    //
+    // Now whichever input is actively being touched owns the car, and exactly
+    // one request goes out every 100ms either way -- which still doubles as
+    // the heartbeat that keeps the firmware failsafe (CONTROL_TIMEOUT_MS)
+    // from auto-stopping mid-drive.
     var currentcommand=0;
-    var oldcommand=0;
+    // Shared with the joystick block further down (declared here so this loop
+    // can see them; the joystick block assigns them).
+    var joyActive = false;
+    var joyX = 0, joyY = 0;  // -100..100, x: + right, y: + forward
     window.setInterval(function(){
+      // Joystick wins while it's actually being dragged; releasing it clears
+      // joyActive, which drops us back to the keyboard/D-pad branch below --
+      // and that branch sends command 5 (stop) when no key is held, so the
+      // car still stops on release without needing a special-case send here.
+      if (joyActive) {
+        fetch(document.location.origin + '/joystick?x=' + joyX + '&y=' + joyY).catch(function(){});
+        return;
+      }
       if (((keyforward) && (keyleft)) || ((keybackward) && (keyleft)) || (keyleft)) {currentcommand = 3;} // Turn Left
       else if (((keyforward) && (keyright)) || ((keybackward) && (keyright)) || (keyright)) {currentcommand = 4;} // Turn Right
       else if (keyforward) {currentcommand = 1;} //Set Direction Forward
       else if (keybackward) {currentcommand = 2;} // Set Direction Backward
       else {currentcommand = 5;} // Stop
-      // Always send, even if unchanged: this doubles as a heartbeat so the
-      // car's on-board failsafe (see CONTROL_TIMEOUT_MS in the firmware)
-      // knows the client is still connected and doesn't auto-stop mid-drive.
       fetch(document.location.origin+'/control?var=car&val='+currentcommand).catch(function(){});
-      oldcommand = currentcommand;
     }, 100);
 
     // Connection status heartbeat: pings the existing /status endpoint on a
@@ -1685,8 +1703,8 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       var base = document.getElementById('joystick-base');
       var thumb = document.getElementById('joystick-thumb');
       var radius = 48;      // max thumb travel in px (half of base width minus thumb radius)
-      var active = false;
-      var jx = 0, jy = 0;    // -100..100, x: + right, y: + forward
+      // joyActive / joyX / joyY are declared above, next to the control loop.
+      // This block only sets them; the single loop up there does the sending.
 
       function setThumb(dx, dy) {
         thumb.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
@@ -1704,39 +1722,33 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           dy = dy * radius / dist;
         }
         setThumb(dx, dy);
-        jx = Math.round((dx / radius) * 100);
-        jy = Math.round((-dy / radius) * 100); // screen-down is negative y, so invert for "forward = up"
+        joyX = Math.round((dx / radius) * 100);
+        joyY = Math.round((-dy / radius) * 100); // screen-down is negative y, so invert for "forward = up"
       }
 
       function resetThumb() {
         setThumb(0, 0);
-        jx = 0;
-        jy = 0;
+        joyX = 0;
+        joyY = 0;
       }
 
       base.addEventListener('pointerdown', function (e) {
-        active = true;
+        joyActive = true;
         base.setPointerCapture(e.pointerId);
         updateFromPoint(e.clientX, e.clientY);
       });
       base.addEventListener('pointermove', function (e) {
-        if (!active) return;
+        if (!joyActive) return;
         updateFromPoint(e.clientX, e.clientY);
       });
       function endDrag() {
-        if (!active) return;
-        active = false;
+        if (!joyActive) return;
+        joyActive = false;
         resetThumb();
       }
       base.addEventListener('pointerup', endDrag);
       base.addEventListener('pointercancel', endDrag);
-      base.addEventListener('pointerleave', function () { if (active) endDrag(); });
-
-      // Always send, even if unchanged: doubles as a heartbeat for the
-      // firmware's connection-loss failsafe (CONTROL_TIMEOUT_MS).
-      window.setInterval(function () {
-        fetch(document.location.origin + '/joystick?x=' + jx + '&y=' + jy).catch(function () {});
-      }, 100);
+      base.addEventListener('pointerleave', function () { if (joyActive) endDrag(); });
     })();
     </script>
     </body>
