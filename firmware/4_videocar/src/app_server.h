@@ -207,9 +207,16 @@ static esp_err_t stream_handler(httpd_req_t *req) {
 
 
 // Control Handling from Server
-// Setup states of motion for Scout
+// Setup states of motion for Scout.
+// 'trn' (turning in place) exists so that a turn counts as "the car is
+// moving" for loop()'s failsafe check. Previously the Left/Right commands
+// set the motors but left actstate untouched, so a turn started from a
+// standstill left actstate == stp and the failsafe never fired -- lose WiFi
+// mid-turn and the car span in place indefinitely. Nothing branches on the
+// specific value, only on "!= stp", so adding a state here is safe.
 enum state { fwd,
              rev,
+             trn,
              stp };
 state actstate = stp;
 
@@ -325,13 +332,14 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
       i2c_Write(M2_IN, 0);
     } else if (val == 3)  //Left
     {
+      actstate = trn;  // must be non-stp or the failsafe in loop() ignores us
       i2c_Write(M1_PWM, 150);
       i2c_Write(M1_IN, 0);
       i2c_Write(M2_PWM, 150);
       i2c_Write(M2_IN, 0);
     } else if (val == 4)  //Right
     {
-      Serial.println("右转");
+      actstate = trn;  // must be non-stp or the failsafe in loop() ignores us
       // Car_right();
       i2c_Write(M1_PWM, 0);
       i2c_Write(M1_IN, 150);
