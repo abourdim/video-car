@@ -496,7 +496,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           #viewfinder{position:relative;border-radius:8px;overflow:hidden;background:var(--panel-2);
             border:1px solid var(--border);aspect-ratio:4/3;}
           #stream{display:block;width:100%;height:100%;object-fit:cover;}
-          #detect-overlay,#follow-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+          #detect-overlay,#follow-overlay,#cv-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
           .vf-corner{position:absolute;width:22px;height:22px;border:2px solid var(--cyan);opacity:.85;}
           .vf-tl{top:8px;left:8px;border-right:0;border-bottom:0;}
           .vf-tr{top:8px;right:8px;border-left:0;border-bottom:0;}
@@ -535,6 +535,16 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           #hands-btn{grid-column:1/-1;}
           #hands-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
           #hands-btn.active{background:#FB923C;border-color:#FB923C;color:var(--bg);}
+          #chase-btn{grid-column:1/-1;}
+          #cv-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
+          #motion-btn.active{background:#F472B6;border-color:#F472B6;color:var(--bg);}
+          #line-btn.active{background:#FBBF24;border-color:#FBBF24;color:var(--bg);}
+          #chase-btn.active{background:#22D3EE;border-color:#22D3EE;color:var(--bg);}
+          .cv-row{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:11px;color:var(--muted);}
+          .cv-row label{display:flex;align-items:center;gap:4px;}
+          #cv-color{width:44px;height:32px;padding:2px;border:1px solid var(--border);border-radius:6px;
+            background:var(--panel-2);cursor:pointer;}
+          #cv-sample{height:32px;font-size:11px;padding:0 10px;}
           #offline-btn{grid-column:1/-1;}
           #offline-status{margin-top:8px;font-size:11px;color:var(--muted);letter-spacing:.02em;min-height:14px;line-height:1.4;}
           #offline-stats{margin-top:6px;font-size:11px;color:var(--cyan);letter-spacing:.02em;min-height:14px;}
@@ -596,6 +606,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <img id="stream" src="">
           <canvas id="detect-overlay"></canvas>
           <canvas id="follow-overlay"></canvas>
+          <canvas id="cv-overlay"></canvas>
           <div class="vf-corner vf-tl"></div>
           <div class="vf-corner vf-tr"></div>
           <div class="vf-corner vf-bl"></div>
@@ -631,6 +642,23 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <button id="expr-btn" onclick="toggleExpr()">&#128512; Expression</button>
         </div>
         <div id="expr-status">Reads facial expressions (happy/sad/surprised/...) &mdash; needs internet once to load.</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-label">Classic CV</div>
+        <div class="btn-row">
+          <button id="motion-btn" onclick="toggleCV('motion')">&#128064; Motion</button>
+          <button id="line-btn" onclick="toggleCV('line')">&#12336; Line</button>
+        </div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button id="chase-btn" onclick="toggleCV('chase')">&#127912; Colour chase</button>
+        </div>
+        <div class="cv-row">
+          <input type="color" id="cv-color" value="#dc2828">
+          <button id="cv-sample" onclick="sampleColour()">Sample centre</button>
+          <label><input type="checkbox" id="cv-invert"> light line</label>
+        </div>
+        <div id="cv-status">No models and no internet &mdash; pure pixel maths, so these run at full frame rate on the car's own WiFi. Line and Colour chase drive the car; give it floor space.</div>
       </section>
 
       <section class="panel">
@@ -977,6 +1005,48 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     setTimeout(startStream, 1000);
   });
   startStream();
+
+  // --- Shared frame grabber ------------------------------------------------
+  // One place that knows how to get a still out of the camera, used by
+  // Follow-me and the Classic CV modes. Preferred path is drawImage() straight
+  // off the live MJPEG <img>, because that frame is already on the wire and
+  // costs the ESP32 nothing extra. It needs the stream's CORS header to avoid
+  // tainting the canvas, which is verified once with a 1-pixel read rather than
+  // assumed; failing that it polls /capture, which is same-origin and always
+  // safe but makes the camera produce a second frame while the stream is
+  // already running. That second frame is most of why the older vision loops
+  // only manage 0.4-2.5Hz.
+  var VCFrame = (function () {
+    var useCapture = false, probed = false;
+    function grabInto(cv, ctx) {
+      if (!useCapture && !window.__followNoCors) {
+        var w = source.naturalWidth || 0, h = source.naturalHeight || 0;
+        if (!w || !h) return Promise.resolve(null);
+        cv.width = w; cv.height = h;
+        try {
+          ctx.drawImage(source, 0, 0, w, h);
+          if (!probed) { ctx.getImageData(0, 0, 1, 1); probed = true; }
+          return Promise.resolve({ w: w, h: h });
+        } catch (e) { useCapture = true; probed = true; }
+      } else if (!useCapture) { useCapture = true; }
+      return fetch(document.location.origin + '/capture?_=' + Date.now())
+        .then(function (r) { return r.blob(); })
+        .then(function (b) {
+          return new Promise(function (resolve, reject) {
+            var img = new Image(), url = URL.createObjectURL(b);
+            img.onload = function () {
+              cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+              ctx.drawImage(img, 0, 0);
+              URL.revokeObjectURL(url);
+              resolve({ w: cv.width, h: cv.height });
+            };
+            img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('frame decode failed')); };
+            img.src = url;
+          });
+        });
+    }
+    return { grabInto: grabInto, mode: function () { return useCapture ? 'capture' : 'stream'; } };
+  })();
 
   // Vertical flip / horizontal mirror toggles. Both default to ON (matching
   // the s->set_vflip(s,1) / s->set_hmirror(s,1) the firmware sets at boot,
@@ -1865,7 +1935,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     keyon.preventDefault();
       // A human touching the controls always outranks the autonomous loop.
       if (keyon.keyCode == '38' || keyon.keyCode == '40' || keyon.keyCode == '37' || keyon.keyCode == '39') {
-        disarmFollow('Manual input \u2014 follow disarmed.');
+        disarmAuto('Manual input \u2014 autonomy disarmed.');
       }
       if ((keyon.keyCode == '38') && (!keybackward) && (!keyforward)) {keyforward = 1;}
       else if ((keyon.keyCode == '40') && (!keyforward) && (!keybackward)){keybackward = 1;}
@@ -1894,13 +1964,26 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     // can see them; the joystick block assigns them).
     var joyActive = false;
     var joyX = 0, joyY = 0;  // -100..100, x: + right, y: + forward
-    // Same idea for the autonomous follow-me block: it computes a steer and
-    // throttle and parks them here, and this one loop forwards them. Adding a
-    // third timer of its own is exactly the bug the comment above describes,
-    // so the autonomous controller is a *source of setpoints*, never a sender.
-    var followActive = false;
-    var followX = 0, followY = 0;
-    var disarmFollow = function () {};  // replaced by the follow-me block below
+    // Autonomous modes (Follow-me, Line, Colour chase) are *sources of
+    // setpoints*, never senders: each parks a steer/throttle here and this one
+    // loop forwards it. Giving any of them its own timer would be exactly the
+    // bug described above -- and an autonomous sender racing a manual one is
+    // the worst version of it. Exactly one mode holds the arbiter at a time;
+    // claiming it disarms whoever had it.
+    var autoActive = false, autoName = null;
+    var autoX = 0, autoY = 0;
+    var autoDisarmers = {};
+    function autoRegister(name, fn) { autoDisarmers[name] = fn; }
+    function autoClaim(name) {
+      for (var k in autoDisarmers) if (k !== name) autoDisarmers[k]('Superseded by ' + name + '.');
+      autoActive = true; autoName = name; autoX = 0; autoY = 0;
+    }
+    function autoRelease(name) {
+      if (autoName === name) { autoActive = false; autoName = null; autoX = 0; autoY = 0; }
+    }
+    function disarmAuto(reason) {
+      for (var k in autoDisarmers) autoDisarmers[k](reason);
+    }
     window.setInterval(function(){
       // Priority: a hand on the joystick beats the autonomous loop, which
       // beats the D-pad. Releasing the joystick clears joyActive, which drops
@@ -1911,8 +1994,8 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         fetch(document.location.origin + '/joystick?x=' + joyX + '&y=' + joyY).catch(function(){});
         return;
       }
-      if (followActive) {
-        fetch(document.location.origin + '/joystick?x=' + followX + '&y=' + followY).catch(function(){});
+      if (autoActive) {
+        fetch(document.location.origin + '/joystick?x=' + autoX + '&y=' + autoY).catch(function(){});
         return;
       }
       if (((keyforward) && (keyleft)) || ((keybackward) && (keyleft)) || (keyleft)) {currentcommand = 3;} // Turn Left
@@ -1979,7 +2062,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       }
 
       base.addEventListener('pointerdown', function (e) {
-        disarmFollow('Joystick taken \u2014 follow disarmed.');
+        disarmAuto('Joystick taken \u2014 autonomy disarmed.');
         joyActive = true;
         base.setPointerCapture(e.pointerId);
         updateFromPoint(e.clientX, e.clientY);
@@ -2007,7 +2090,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     //   throttle <- how tall the box is vs. TARGET_FILL (a stand-in for range;
     //               a bigger box means the target is closer)
     //
-    // Both land in followX/followY, which the single control loop above
+    // Both land in autoX/autoY, which the single control loop above
     // forwards to /joystick -- the same endpoint manual driving already uses,
     // so the firmware needs no new handler and the 500ms failsafe covers this
     // mode for free.
@@ -2028,7 +2111,6 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       var overlay = document.getElementById('follow-overlay');
       var octx = overlay.getContext('2d');
       var vf = document.getElementById('viewfinder');
-      var streamImg = document.getElementById('stream');
 
       // --- tuning knobs -- these are the numbers to play with on real carpet
       var KP_STEER = 1.6;          // gain: horizontal error -> steer
@@ -2048,7 +2130,6 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       var frameW = 320, frameH = 240;
       var grab = document.createElement('canvas');
       var gctx = grab.getContext('2d', { willReadFrequently: true });
-      var useCapture = false, probed = false;
 
       function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -2078,47 +2159,6 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           .then(function () { scriptsLoaded = true; });
       }
 
-      // Preferred path: draw straight off the live MJPEG <img>, which costs
-      // the ESP32 nothing -- the frame is already on the wire. That needs the
-      // stream's CORS header to avoid tainting the canvas, so rather than
-      // assume it worked we verify once with a 1-pixel read and fall back to
-      // polling /capture (same origin, always safe, but makes the camera
-      // produce a second frame) if the browser objects.
-      function grabFrame() {
-        if (!useCapture && !window.__followNoCors) {
-          var w = streamImg.naturalWidth || 0, h = streamImg.naturalHeight || 0;
-          if (!w || !h) return Promise.resolve(null);
-          frameW = w; frameH = h;
-          grab.width = w; grab.height = h;
-          try {
-            gctx.drawImage(streamImg, 0, 0, w, h);
-            if (!probed) { gctx.getImageData(0, 0, 1, 1); probed = true; }
-            return Promise.resolve(grab);
-          } catch (e) {
-            useCapture = true; probed = true;
-          }
-        } else if (!useCapture) {
-          useCapture = true;
-        }
-        return fetch(document.location.origin + '/capture?_=' + Date.now())
-          .then(function (r) { return r.blob(); })
-          .then(function (b) {
-            return new Promise(function (resolve, reject) {
-              var img = new Image();
-              var url = URL.createObjectURL(b);
-              img.onload = function () {
-                frameW = img.naturalWidth; frameH = img.naturalHeight;
-                grab.width = frameW; grab.height = frameH;
-                gctx.drawImage(img, 0, 0);
-                URL.revokeObjectURL(url);
-                resolve(grab);
-              };
-              img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('frame decode failed')); };
-              img.src = url;
-            });
-          });
-      }
-
       // Proportional control. Deadbands matter more than the gains here: without
       // them the car hunts left-right forever around the centre because the
       // motors have a stiction floor the controller can't see.
@@ -2131,8 +2171,8 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         var errD = (TARGET_FILL - fill) / TARGET_FILL;      // + = too far away
         var throttle = Math.abs(errD) < DEADBAND_D ? 0 : clamp(errD * KP_THROTTLE, -1, 1);
 
-        followX = Math.round(steer * FOLLOW_MAX);
-        followY = Math.round(throttle * (throttle >= 0 ? FOLLOW_MAX : FOLLOW_MAX_REV));
+        autoX = Math.round(steer * FOLLOW_MAX);
+        autoY = Math.round(throttle * (throttle >= 0 ? FOLLOW_MAX : FOLLOW_MAX_REV));
       }
 
       function draw() {
@@ -2179,14 +2219,14 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         octx.fillRect(bx, by, bw, bh);
         octx.fillRect(bx, by + 9, bw, bh);
         octx.fillStyle = '#4ADE80';
-        octx.fillRect(bx + bw / 2, by, (followX / 100) * (bw / 2), bh);
-        octx.fillRect(bx + bw / 2, by + 9, (followY / 100) * (bw / 2), bh);
+        octx.fillRect(bx + bw / 2, by, (autoX / 100) * (bw / 2), bh);
+        octx.fillRect(bx + bw / 2, by + 9, (autoY / 100) * (bw / 2), bh);
       }
 
       function disarm(msg) {
+        if (!armed) return;
         armed = false;
-        followActive = false;
-        followX = 0; followY = 0;
+        autoRelease('Follow');
         lastBox = null;
         followBtn.textContent = '\uD83C\uDFAF Follow Me';
         followBtn.classList.remove('active');
@@ -2194,14 +2234,18 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         if (msg) statusEl.textContent = msg;
         draw();
       }
-      disarmFollow = disarm;  // manual-override hook used by the control loop
+      autoRegister('Follow', disarm);
 
       function tick() {
         if (!armed) return;
         if (busy) { window.setTimeout(tick, 30); return; }
         busy = true;
-        grabFrame()
-          .then(function (cv) { return cv ? model.detect(cv) : null; })
+        VCFrame.grabInto(grab, gctx)
+          .then(function (dim) {
+            if (!dim) return null;
+            frameW = dim.w; frameH = dim.h;
+            return model.detect(grab);
+          })
           .then(function (preds) {
             if (!armed) return;
             var want = targetSel.value, best = null;
@@ -2217,11 +2261,11 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
               lastBox = best.bbox;
               control(best.bbox);
               statusEl.textContent = 'Tracking ' + want + ' ' + Math.round(best.score * 100) + '% \u2014 steer '
-                + followX + ', throttle ' + followY + (useCapture ? ' (/capture fallback)' : '');
+                + autoX + ', throttle ' + autoY + (VCFrame.mode() === 'capture' ? ' (/capture fallback)' : '');
             } else {
               var gone = Date.now() - lastSeen;
               lastBox = null;
-              if (gone > FOLLOW_LOST_MS) { followX = 0; followY = 0; }
+              if (gone > FOLLOW_LOST_MS) { autoX = 0; autoY = 0; }
               if (gone > FOLLOW_GIVEUP_MS) {
                 disarm('Lost the ' + want + ' \u2014 disarmed.');
                 return;
@@ -2250,8 +2294,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
             followBtn.disabled = false;
             if (!model) { statusEl.textContent = 'Could not load the object model.'; return; }
             armed = true;
-            followActive = true;
-            followX = 0; followY = 0;
+            autoClaim('Follow');
             lastSeen = Date.now();
             targetSel.disabled = true;
             followBtn.textContent = '\u23F9 Stop Following';
@@ -2269,6 +2312,320 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         if (document.hidden && armed) disarm('Tab hidden \u2014 follow disarmed.');
       });
       window.addEventListener('pagehide', function () { if (armed) disarm(); });
+    })();
+
+    // --- Classic CV: no models, no network ---------------------------------
+    // Everything above needs a neural net downloaded from the internet, which
+    // the car's own AP cannot reach. These three need neither, and they run on
+    // raw pixels at full frame rate rather than the 0.4-2.5Hz a model manages
+    // on a phone -- which is exactly what a control loop wants.
+    //
+    //   Motion  passive; frame differencing, draws where something moved
+    //   Line    autonomous; follows a dark (or light) line on the floor
+    //   Chase   autonomous; drives at the nearest blob of a chosen colour
+    //
+    // One mode at a time, sharing one overlay. Motion is the exception: it
+    // doesn't drive, so it is left running when an autonomous mode elsewhere
+    // (Follow-me) claims the arbiter.
+    (function () {
+      var overlay = document.getElementById('cv-overlay');
+      var octx = overlay.getContext('2d');
+      var vf = document.getElementById('viewfinder');
+      var statusEl = document.getElementById('cv-status');
+      var colorIn = document.getElementById('cv-color');
+      var invertIn = document.getElementById('cv-invert');
+      var btns = {
+        motion: document.getElementById('motion-btn'),
+        line: document.getElementById('line-btn'),
+        chase: document.getElementById('chase-btn')
+      };
+      var cv = document.createElement('canvas');
+      var ctx = cv.getContext('2d', { willReadFrequently: true });
+
+      // --- tuning: these are the numbers to play with on real carpet --------
+      var LINE_BAND_TOP = 0.62, LINE_BAND_H = 0.30;  // look at the floor just ahead
+      var LINE_MIN_CONTRAST = 18;   // reject a featureless floor rather than chase noise
+      var LINE_MIN_PIX = 80;
+      var LINE_KP = 1.5, LINE_SPEED = 42, LINE_TURN_CUT = 0.65, LINE_MAX = 48;
+      var CHASE_TOL = 0.10;         // rg-chromaticity radius
+      var CHASE_MIN_PIX = 60, CHASE_TARGET_FILL = 0.06;
+      var CHASE_KP_STEER = 1.5, CHASE_KP_THROTTLE = 2.2;
+      var CHASE_MAX = 50, CHASE_MAX_REV = 28;
+      var MOTION_THR = 25, MOTION_MIN_PIX = 60;
+      var LOST_MS = 600, GIVEUP_MS = 2500;
+
+      var mode = null, busy = false, prevBuf = null, lastSeen = 0;
+      var W = 320, H = 240, last = null;
+
+      function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+      function lum(d, i) { return (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000; }
+
+      // Threshold sits midway between the band's mean and its darkest pixel, so
+      // it adapts to whatever contrast the line actually has instead of assuming
+      // how dark it is. LINE_MIN_CONTRAST then rejects a blank floor, which
+      // would otherwise produce a centroid from sensor noise alone.
+      function lineScan(d, w, h, bandTop, bandH, minContrast, minPix, invert) {
+        var y0 = Math.max(0, Math.floor(bandTop)), y1 = Math.min(h, y0 + Math.floor(bandH));
+        var sum = 0, n = 0, lo = 255, hi = 0, L, x, y;
+        for (y = y0; y < y1; y++) for (x = 0; x < w; x++) {
+          L = lum(d, (y * w + x) * 4); sum += L; n++;
+          if (L < lo) lo = L;
+          if (L > hi) hi = L;
+        }
+        if (!n) return null;
+        var mean = sum / n;
+        if ((invert ? (hi - mean) : (mean - lo)) < minContrast) return null;
+        var thr = invert ? (mean + hi) / 2 : (mean + lo) / 2;
+        var sx = 0, cnt = 0, minX = w, maxX = 0;
+        for (y = y0; y < y1; y++) for (x = 0; x < w; x++) {
+          L = lum(d, (y * w + x) * 4);
+          if (invert ? (L > thr) : (L < thr)) {
+            sx += x; cnt++;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+          }
+        }
+        if (cnt < minPix) return null;
+        return { x: sx / cnt, count: cnt, minX: minX, maxX: maxX, y0: y0, y1: y1 };
+      }
+
+      // rg-chromaticity rather than raw RGB distance, so a shadow falling across
+      // the target doesn't lose it -- normalising by total intensity throws away
+      // brightness and keeps hue.
+      function colorScan(d, w, h, tr, tg, tb, tol, minPix) {
+        var ts = tr + tg + tb || 1, tR = tr / ts, tG = tg / ts;
+        var sx = 0, sy = 0, cnt = 0, minX = w, maxX = 0, minY = h, maxY = 0;
+        for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+          var i = (y * w + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2], s = r + g + b;
+          if (s < 60) continue;             // too dark for hue to mean anything
+          var dR = r / s - tR, dG = g / s - tG;
+          if (Math.sqrt(dR * dR + dG * dG) < tol) {
+            sx += x; sy += y; cnt++;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+        if (cnt < minPix) return null;
+        return { x: sx / cnt, y: sy / cnt, count: cnt, minX: minX, maxX: maxX, minY: minY, maxY: maxY };
+      }
+
+      // Frame differencing with the global mean shift removed first. The OV2640
+      // runs auto-exposure continuously, so the whole picture brightens and
+      // darkens by itself; without this every AEC adjustment reads as full-frame
+      // motion and the feature is useless indoors.
+      function motionScan(d, prev, w, h, thr, minPix) {
+        var np = w * h, cur = new Uint8Array(np), sum = 0, p, L;
+        for (p = 0; p < np; p++) { L = lum(d, p * 4) | 0; cur[p] = L; sum += L; }
+        if (!prev || prev.length !== np) return { buf: cur, hit: null };
+        var sumPrev = 0;
+        for (p = 0; p < np; p++) sumPrev += prev[p];
+        var delta = (sum - sumPrev) / np;
+        var cnt = 0, minX = w, maxX = 0, minY = h, maxY = 0;
+        for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+          p = y * w + x;
+          if (Math.abs(cur[p] - prev[p] - delta) > thr) {
+            cnt++;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+        return {
+          buf: cur,
+          hit: cnt >= minPix ? { count: cnt, minX: minX, maxX: maxX, minY: minY, maxY: maxY, pct: 100 * cnt / np } : null
+        };
+      }
+
+      function hexToRgb(hex) {
+        var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+        return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [220, 40, 40];
+      }
+
+      function draw() {
+        overlay.width = vf.clientWidth;
+        overlay.height = vf.clientHeight;
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+        if (!mode || !last) return;
+        var sx = overlay.width / W, sy = overlay.height / H;
+        var midX = overlay.width / 2;
+
+        if (mode === 'motion' && last.hit) {
+          var m = last.hit;
+          octx.strokeStyle = '#F472B6';
+          octx.lineWidth = 2;
+          octx.strokeRect(m.minX * sx, m.minY * sy, (m.maxX - m.minX) * sx, (m.maxY - m.minY) * sy);
+          octx.fillStyle = '#F472B6';
+          octx.font = '11px monospace';
+          octx.fillText('MOTION ' + m.pct.toFixed(1) + '%', m.minX * sx, Math.max(11, m.minY * sy - 4));
+        } else if (mode === 'line' && last.hit) {
+          var l = last.hit;
+          octx.fillStyle = 'rgba(251,191,36,0.14)';
+          octx.fillRect(0, l.y0 * sy, overlay.width, (l.y1 - l.y0) * sy);
+          octx.strokeStyle = '#FBBF24';
+          octx.lineWidth = 2;
+          octx.beginPath();
+          octx.moveTo(l.x * sx, l.y0 * sy);
+          octx.lineTo(l.x * sx, l.y1 * sy);
+          octx.stroke();
+          octx.setLineDash([4, 4]);
+          octx.strokeStyle = 'rgba(255,255,255,0.35)';
+          octx.lineWidth = 1;
+          octx.beginPath();
+          octx.moveTo(midX, l.y0 * sy);
+          octx.lineTo(midX, l.y1 * sy);
+          octx.stroke();
+          octx.setLineDash([]);
+        } else if (mode === 'chase' && last.hit) {
+          var c = last.hit;
+          octx.strokeStyle = '#22D3EE';
+          octx.lineWidth = 2;
+          octx.strokeRect(c.minX * sx, c.minY * sy, (c.maxX - c.minX) * sx, (c.maxY - c.minY) * sy);
+          octx.beginPath();
+          octx.arc(c.x * sx, c.y * sy, 4, 0, Math.PI * 2);
+          octx.fillStyle = '#22D3EE';
+          octx.fill();
+        }
+
+        if (mode !== 'motion') {
+          var bw = 70, bh = 5, bx = 10, by = overlay.height - 22;
+          octx.fillStyle = 'rgba(255,255,255,0.15)';
+          octx.fillRect(bx, by, bw, bh);
+          octx.fillRect(bx, by + 9, bw, bh);
+          octx.fillStyle = mode === 'line' ? '#FBBF24' : '#22D3EE';
+          octx.fillRect(bx + bw / 2, by, (autoX / 100) * (bw / 2), bh);
+          octx.fillRect(bx + bw / 2, by + 9, (autoY / 100) * (bw / 2), bh);
+        }
+      }
+
+      function lost(what) {
+        var gone = Date.now() - lastSeen;
+        if (gone > LOST_MS) { autoX = 0; autoY = 0; }
+        if (gone > GIVEUP_MS && mode !== 'motion') {
+          stop('Lost the ' + what + ' \u2014 disarmed.');
+          return true;
+        }
+        return false;
+      }
+
+      function step() {
+        if (!mode) return;
+        if (busy) { window.setTimeout(step, 20); return; }
+        busy = true;
+        VCFrame.grabInto(cv, ctx)
+          .then(function (dim) {
+            if (!mode) return;
+            if (!dim) return;
+            W = dim.w; H = dim.h;
+            var d = ctx.getImageData(0, 0, W, H).data;
+
+            if (mode === 'motion') {
+              var m = motionScan(d, prevBuf, W, H, MOTION_THR, MOTION_MIN_PIX);
+              prevBuf = m.buf;
+              last = { hit: m.hit };
+              statusEl.textContent = m.hit
+                ? 'Motion \u2014 ' + m.hit.pct.toFixed(1) + '% of frame changed.'
+                : 'Watching \u2014 no motion.';
+
+            } else if (mode === 'line') {
+              var l = lineScan(d, W, H, H * LINE_BAND_TOP, H * LINE_BAND_H,
+                               LINE_MIN_CONTRAST, LINE_MIN_PIX, invertIn.checked);
+              last = { hit: l };
+              if (l) {
+                lastSeen = Date.now();
+                var errL = (l.x - W / 2) / (W / 2);
+                var steerL = clamp(errL * LINE_KP, -1, 1);
+                autoX = Math.round(steerL * LINE_MAX);
+                autoY = Math.round(LINE_SPEED * (1 - LINE_TURN_CUT * Math.abs(steerL)));
+                statusEl.textContent = 'Line at ' + errL.toFixed(2) + ' \u2014 steer ' + autoX + ', throttle ' + autoY;
+              } else if (!lost('line')) {
+                statusEl.textContent = 'Looking for a line\u2026';
+              } else { return; }
+
+            } else if (mode === 'chase') {
+              var rgb = hexToRgb(colorIn.value);
+              var c = colorScan(d, W, H, rgb[0], rgb[1], rgb[2], CHASE_TOL, CHASE_MIN_PIX);
+              last = { hit: c };
+              if (c) {
+                lastSeen = Date.now();
+                var errC = (c.x - W / 2) / (W / 2);
+                var steerC = clamp(errC * CHASE_KP_STEER, -1, 1);
+                var fill = c.count / (W * H);
+                var errD = (CHASE_TARGET_FILL - fill) / CHASE_TARGET_FILL;
+                var thr2 = clamp(errD * CHASE_KP_THROTTLE, -1, 1);
+                autoX = Math.round(steerC * CHASE_MAX);
+                autoY = Math.round(thr2 * (thr2 >= 0 ? CHASE_MAX : CHASE_MAX_REV));
+                statusEl.textContent = 'Blob ' + (100 * fill).toFixed(1) + '% of frame \u2014 steer '
+                  + autoX + ', throttle ' + autoY;
+              } else if (!lost('colour')) {
+                statusEl.textContent = 'Looking for that colour\u2026';
+              } else { return; }
+            }
+            draw();
+          })
+          .catch(function (e) { stop('Stopped after an error: ' + e.message); })
+          .then(function () {
+            busy = false;
+            if (mode) window.setTimeout(step, 0);
+          });
+      }
+
+      function stop(msg) {
+        if (!mode) return;
+        var was = mode;
+        mode = null;
+        prevBuf = null;
+        last = null;
+        if (was === 'line' || was === 'chase') autoRelease(was === 'line' ? 'Line' : 'Chase');
+        for (var k in btns) { btns[k].classList.remove('active'); }
+        btns.motion.textContent = '\uD83D\uDC40 Motion';
+        btns.line.textContent = '\u3030 Line';
+        btns.chase.textContent = '\uD83C\uDFA8 Colour chase';
+        if (msg) statusEl.textContent = msg;
+        draw();
+      }
+
+      // Registered so Follow-me can take the arbiter off us. Motion doesn't
+      // drive, so it survives -- no reason to stop watching for movement just
+      // because something else is steering.
+      autoRegister('Line', function (why) { if (mode === 'line') stop(why); });
+      autoRegister('Chase', function (why) { if (mode === 'chase') stop(why); });
+
+      window.toggleCV = function (which) {
+        if (mode === which) { stop('Stopped.'); return; }
+        stop();
+        mode = which;
+        lastSeen = Date.now();
+        prevBuf = null;
+        if (which === 'line' || which === 'chase') autoClaim(which === 'line' ? 'Line' : 'Chase');
+        btns[which].classList.add('active');
+        btns[which].textContent = '\u23F9 Stop';
+        statusEl.textContent = 'Starting\u2026';
+        step();
+      };
+
+      // Easier than eyedroppering a hex value: point the car at the thing and
+      // average the middle of the frame.
+      window.sampleColour = function () {
+        VCFrame.grabInto(cv, ctx).then(function (dim) {
+          if (!dim) { statusEl.textContent = 'No frame yet \u2014 is the stream live?'; return; }
+          var n = 20;
+          var x0 = Math.max(0, (dim.w - n) >> 1), y0 = Math.max(0, (dim.h - n) >> 1);
+          var d = ctx.getImageData(x0, y0, n, n).data;
+          var r = 0, g = 0, b = 0, c = d.length / 4;
+          for (var i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+          function hx(v) { var s = Math.round(v / c).toString(16); return s.length < 2 ? '0' + s : s; }
+          colorIn.value = '#' + hx(r) + hx(g) + hx(b);
+          statusEl.textContent = 'Sampled ' + colorIn.value + ' from the centre of frame.';
+        }).catch(function (e) { statusEl.textContent = 'Sample failed: ' + e.message; });
+      };
+
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden && (mode === 'line' || mode === 'chase')) stop('Tab hidden \u2014 disarmed.');
+      });
+      window.addEventListener('pagehide', function () { if (mode) stop(); });
     })();
     </script>
     </body>

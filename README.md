@@ -99,6 +99,27 @@ open `http://192.168.4.1` in a browser.
   browser since the ESP32 can't run a neural net alongside everything else.
   Needs internet access on the network the device is using to load the
   models the first time.
+- **Classic CV (no models, no internet)** -- three features that work on the
+  car's own AP with nothing downloaded, because they're plain pixel maths
+  rather than a neural net. They also run at full frame rate instead of the
+  0.4-2.5Hz a model manages on a phone, which is what makes the driving ones
+  viable:
+  - **Motion** -- frame differencing, boxes whatever moved. Subtracts the
+    global brightness shift first, since the OV2640's constant auto-exposure
+    hunting would otherwise read as full-frame motion indoors.
+  - **Line** -- follows a dark line on a light floor, or a light one on a dark
+    floor. The threshold adapts to whatever contrast the line actually has
+    rather than assuming, and it refuses to lock on to a blank floor instead
+    of chasing sensor noise.
+  - **Colour chase** -- drives at the nearest blob of a chosen colour. Matching
+    is done in rg-chromaticity, so a shadow falling across the target doesn't
+    lose it. "Sample centre" picks the colour off whatever the car is pointed
+    at, rather than making you guess a hex value.
+
+  Line and Colour chase drive the car, and share Follow-me's arbiter and
+  safety rules: manual input always wins, only one autonomous mode runs at a
+  time, and a lost target stops the car and then disarms. Motion is passive,
+  so it keeps running alongside whatever else is steering.
 - **Offline model cache** -- the Vision features load scripts from a CDN and
   model weights from Google's model hosting, neither of which the car's own AP
   can reach. Fetches to those hosts are now cached in IndexedDB and read back
