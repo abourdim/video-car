@@ -176,6 +176,21 @@
   </div>
 
   <div class="panel">
+    <h3>Ports guide <span class="tag ok">documentation</span></h3>
+    <p>The two-server split (control on 80, MJPEG on 81) is the least obvious thing about
+    the project and had never been written down: the reason is that a stream response never
+    completes, so sharing one server would let video starve the control endpoints &mdash;
+    and a car that won't accept a stop command because it is busy sending pictures is a
+    dangerous car. <a href="ports.html">ports.html</a> explains that, then walks through
+    both servers from joining the WiFi to driving from a shell.</p>
+    <p>It documents every endpoint with its real value ranges, and gives the 500&nbsp;ms
+    failsafe a section of its own, since a single <code>curl</code> producing a half-second
+    twitch reads as a bug until you know a command is a lease rather than an instruction.
+    Every claim in it was cross-checked against the handlers rather than written from
+    memory.</p>
+  </div>
+
+  <div class="panel">
     <h3>Build stamp <span class="tag ok">diagnostics</span></h3>
     <p>There was no way to tell what firmware a given car was running short of
     reflashing it &mdash; which made &ldquo;are you sure that's the current build?&rdquo;
@@ -248,6 +263,9 @@
       <tr><td class="mono">Codes/4_VideoCar/lib/</td>
           <td><strong>Removed</strong> &mdash; five vendored <code>dl_lib</code> headers
               (~3,100 lines) whose only consumer was unreachable code</td></tr>
+      <tr><td class="mono">ports.html</td>
+          <td>New &mdash; step-by-step guide to the two HTTP servers, aimed at someone
+              who has not used an HTTP API before</td></tr>
       <tr><td class="mono">report.html</td>
           <td>This document</td></tr>
       <tr><td class="mono">Codes/1_Blink, 2_breathing_light, 3_motor</td>

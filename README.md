@@ -37,6 +37,12 @@ each menu option does.
 Once flashed, connect to the `keyes1` WiFi network (password `88888888`) and
 open `http://192.168.4.1` in a browser.
 
+> New to this, or want to drive the car from your own scripts? **`ports.html`**
+> is a step-by-step guide to both servers -- what port 80 and port 81 each do,
+> why there are two of them, every endpoint with its value ranges, and the
+> 500ms failsafe that catches everyone out the first time they try to drive it
+> with `curl`.
+
 > ### ⚠️ The Vision features need internet -- the default AP mode has none
 >
 > Out of the box (`ap = 1`) the car hosts its own isolated `keyes1` network,
@@ -182,6 +188,7 @@ firmware/                PlatformIO projects, one per sketch
   4_videocar/              Mirrors Codes/4_VideoCar -- the main project
 launch.sh                Interactive PlatformIO menu, lets you pick which app to build/flash/monitor
 README.html               Rendered version of this file
+ports.html                Beginner's step-by-step guide to the port 80 / port 81 servers
 report.html               Detailed change report -- what changed, why, and what's still open
 ```
 

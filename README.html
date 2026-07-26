@@ -84,6 +84,14 @@ cd video-car</code></pre>
     <code>88888888</code>) and open <code>http://192.168.4.1</code> in a browser.</p>
 
     <div class="note">
+      <p><strong>&#128218; New to this, or want to drive the car from your own scripts?</strong>
+      <a href="ports.html">ports.html</a> is a step-by-step guide to both servers &mdash; what
+      port 80 and port 81 each do, why there are two of them, every endpoint with its value
+      ranges, and the 500ms failsafe that catches everyone out the first time they try to
+      drive the car with <code>curl</code>.</p>
+    </div>
+
+    <div class="note">
       <p><strong>&#9888; The Vision features need internet &mdash; the default AP mode
       has none.</strong></p>
       <p>Out of the box (<code>ap = 1</code>) the car hosts its own isolated
@@ -234,6 +242,7 @@ firmware/                PlatformIO projects, one per sketch
   4_videocar/              Mirrors Codes/4_VideoCar -- the main project
 launch.sh                Interactive PlatformIO menu, lets you pick which app to build/flash/monitor
 README.html               This file
+ports.html                Beginner's step-by-step guide to the port 80 / port 81 servers
 report.html               Detailed change report -- what changed, why, and what's still open
 README.html               This document</code></pre>
     <p><code>Codes/4_VideoCar</code> and <code>firmware/4_videocar/src</code> are kept in
