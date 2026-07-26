@@ -176,6 +176,24 @@
   </div>
 
   <div class="panel">
+    <h3>Control page layout <span class="tag ok">usability</span></h3>
+    <p>The page had grown to eight panels and roughly five phone-screens, and the joystick
+    and D-pad had ended up sixth and seventh of eight &mdash; behind five panels of vision
+    and maintenance features. Worse than the scrolling: reaching them pushed the viewfinder
+    off the top of the screen, so you steered a moving vehicle while looking at a thumbstick
+    instead of at where it was going.</p>
+    <p>Drive and Manual now sit directly under the video; the viewfinder is
+    <code>position:sticky</code> and stays visible however far you scroll; and the six
+    secondary panels collapse, shut by default, with the open set remembered in
+    localStorage. That takes the page from about five screens to one and a half. Drive and
+    Manual are deliberately not collapsible.</p>
+    <p>One trap worth recording: <code>overflow-x</code> had to move from
+    <code>&lt;body&gt;</code> to <code>&lt;html&gt;</code>. An overflow value on any ancestor
+    of a sticky element turns that ancestor into a scroll container and the stickiness stops
+    working &mdash; silently, with no error, it simply scrolls away.</p>
+  </div>
+
+  <div class="panel">
     <h3>Ports guide <span class="tag ok">documentation</span></h3>
     <p>The two-server split (control on 80, MJPEG on 81) is the least obvious thing about
     the project and had never been written down: the reason is that a stream response never

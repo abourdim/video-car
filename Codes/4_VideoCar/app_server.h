@@ -517,6 +517,19 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
              don't show through the body's side padding as they pass behind. */
           #video-dock{position:sticky;top:0;z-index:30;background:var(--bg);
             margin:0 -12px;padding:4px 12px 8px;}
+          /* Collapsible panels. Eight panels is about five phone-screens; with
+             Drive and Manual pinned under the video, everything else is
+             reference you open when you want it rather than something you need
+             in view while driving. Collapsed by default; the open set is
+             remembered per browser. Drive and Manual are deliberately not
+             collapsible -- they are the point of the page. */
+          .panel.collapsible > .panel-label{cursor:pointer;}
+          .panel.collapsible > .panel-label::before{content:"\25BE";font-size:8px;
+            color:var(--cyan);margin-right:7px;transition:transform .15s ease;}
+          .panel.collapsed > .panel-label::before{transform:rotate(-90deg);}
+          .panel.collapsed > .panel-label{margin-bottom:0;}
+          .panel.collapsed > *:not(.panel-label){display:none !important;}
+          .panel.collapsed{padding-bottom:14px;}
           body{width:100%;max-width:420px;margin:0 auto;padding:0 12px 24px;
             font-family:var(--mono);background:var(--bg);color:var(--text);font-size:14px;}
           header{display:flex;align-items:center;justify-content:space-between;padding:14px 2px 10px;}
@@ -677,7 +690,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <button id="backward" onpointerdown="document.dispatchEvent(backpress);" onpointerup="document.dispatchEvent(backrelease);" onpointerleave="document.dispatchEvent(backrelease);">&#9660; Back</button>
         </div>
       </section>
-      <section class="panel">
+      <section class="panel collapsible" data-panel="autonomy">
         <div class="panel-label">Autonomy</div>
         <div class="btn-row">
           <button id="follow-btn" onclick="toggleFollow()">&#127919; Follow Me</button>
@@ -692,7 +705,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         </select>
         <div id="follow-status">Drives the car on its own to keep the target centred and at a fixed distance. Any manual input disarms it. Give it clear floor space before arming.</div>
       </section>
-      <section class="panel">
+      <section class="panel collapsible" data-panel="classiccv">
         <div class="panel-label">Classic CV</div>
         <div class="btn-row">
           <button id="motion-btn" onclick="toggleCV('motion')">&#128064; Motion</button>
@@ -708,7 +721,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         </div>
         <div id="cv-status">No models and no internet &mdash; pure pixel maths, so these keep up with the video stream on the car's own WiFi. Line and Colour chase drive the car; give it floor space, and leave the Speed slider high since these cap themselves well below it.</div>
       </section>
-      <section class="panel">
+      <section class="panel collapsible" data-panel="vision">
         <div class="panel-label">Vision</div>
         <div class="btn-row">
           <button id="vision-btn" onclick="toggleVision()">&#129302; AI Vision</button>
@@ -735,7 +748,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         </div>
         <div id="expr-status">Reads facial expressions (happy/sad/surprised/...) &mdash; needs internet once to load.</div>
       </section>
-      <section class="panel">
+      <section class="panel collapsible" data-panel="capture">
         <div class="panel-label">Capture</div>
         <div class="btn-row">
           <button id="snapshot-btn" onclick="takeSnapshot()">&#128247; Snapshot</button>
@@ -743,7 +756,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         </div>
         <div id="record-status"></div>
       </section>
-      <section class="panel">
+      <section class="panel collapsible" data-panel="systems">
         <div class="panel-label">Systems</div>
         <div class="slider-row">
           <label>Speed</label>
@@ -778,7 +791,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           </div>
         </div>
       </section>
-      <section class="panel">
+      <section class="panel collapsible" data-panel="offline">
         <div class="panel-label">Offline</div>
         <div id="offline-stats">Checking cache&hellip;</div>
         <div id="offline-status">Model files are saved to this browser as they download. Turn the Vision features on once somewhere with internet and they'll work afterwards on the car's own WiFi, which has none.</div>
@@ -858,6 +871,45 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
        }
      })
      .catch(function () { /* offline on load -- local cache (if any) stands */ });
+
+  // --- Collapsible panels --------------------------------------------------
+  // Collapsed by default so the page opens at roughly one and a half screens
+  // instead of five. Which panels are open is remembered in localStorage, per
+  // browser, so the set you actually use stays open across reloads.
+  //
+  // Collapsing only hides; nothing inside is stopped. An armed autonomy mode
+  // or a running CV loop keeps going with its panel shut -- the arbiter and
+  // the failsafe do not care what the page is displaying.
+  (function () {
+    var KEY = 'vc.panels.open';
+    var open = {};
+    try { open = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { open = {}; }
+
+    function wire(sec) {
+      var id = sec.getAttribute('data-panel');
+      var label = sec.querySelector('.panel-label');
+      if (!id || !label) return;
+      if (!open[id]) sec.classList.add('collapsed');
+      label.setAttribute('role', 'button');
+      label.setAttribute('tabindex', '0');
+      function toggle() {
+        open[id] = !sec.classList.toggle('collapsed');
+        try { localStorage.setItem(KEY, JSON.stringify(open)); } catch (e) {}
+      }
+      label.addEventListener('click', toggle);
+      label.addEventListener('keydown', function (e) {
+        // Enter/Space only. Arrow keys are the drive controls and must reach
+        // the document handler untouched.
+        if (e.key === 'Enter' || e.key === ' ' || e.keyCode === 13 || e.keyCode === 32) {
+          e.preventDefault();
+          toggle();
+        }
+      });
+    }
+
+    var secs = document.querySelectorAll('.panel.collapsible');
+    for (var i = 0; i < secs.length; i++) wire(secs[i]);
+  })();
 
   // --- Offline asset cache ------------------------------------------------
   // The whole Vision suite loads scripts from jsdelivr and model weights from
