@@ -503,7 +503,21 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
             --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",Menlo,monospace;
           }
           *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-          body{width:100%;max-width:420px;margin:0 auto;padding:0 12px 24px;overflow-x:hidden;
+          /* overflow-x lives on <html>, not <body>: an overflow value on an
+             ancestor of a position:sticky element turns that ancestor into a
+             scroll container and the stickiness silently stops working. On
+             <html> it is the viewport scroller anyway, so sticky still resolves
+             against the viewport. */
+          html{overflow-x:hidden;}
+          /* The viewfinder pins to the top of the screen while the panels scroll
+             underneath. The drive controls sit directly below it now, but the
+             sliders and vision panels are still a scroll away -- and reaching
+             them used to mean scrolling the video off-screen and steering a
+             moving vehicle blind. Full-bleed via negative margins so panels
+             don't show through the body's side padding as they pass behind. */
+          #video-dock{position:sticky;top:0;z-index:30;background:var(--bg);
+            margin:0 -12px;padding:4px 12px 8px;}
+          body{width:100%;max-width:420px;margin:0 auto;padding:0 12px 24px;
             font-family:var(--mono);background:var(--bg);color:var(--text);font-size:14px;}
           header{display:flex;align-items:center;justify-content:space-between;padding:14px 2px 10px;}
           header h1{font-size:15px;letter-spacing:.12em;margin:0;font-weight:700;text-transform:uppercase;}
@@ -628,6 +642,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         <div id="conn-status"><span id="conn-dot"></span><span id="conn-text">Connecting&hellip;</span></div>
       </header>
 
+      <div id="video-dock">
       <div class="panel" style="padding:8px;">
         <div id="viewfinder">
           <img id="stream" src="">
@@ -643,6 +658,56 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         </div>
       </div>
 
+      </div>
+
+      <section class="panel">
+        <div class="panel-label">Drive</div>
+        <div id="joystick-container">
+          <div id="joystick-base">
+            <div id="joystick-thumb"></div>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-label">Manual</div>
+        <div id="dpad">
+          <button id="forward" onpointerdown="document.dispatchEvent(fwdpress);" onpointerup="document.dispatchEvent(fwdrelease);" onpointerleave="document.dispatchEvent(fwdrelease);">&#9650; Fwd</button>
+          <button id="turnleft" onpointerdown="document.dispatchEvent(leftpress);" onpointerup="document.dispatchEvent(leftrelease);" onpointerleave="document.dispatchEvent(leftrelease);">&#9664; Left</button>
+          <button id="turnright" onpointerdown="document.dispatchEvent(rightpress);" onpointerup="document.dispatchEvent(rightrelease);" onpointerleave="document.dispatchEvent(rightrelease);">Right &#9654;</button>
+          <button id="backward" onpointerdown="document.dispatchEvent(backpress);" onpointerup="document.dispatchEvent(backrelease);" onpointerleave="document.dispatchEvent(backrelease);">&#9660; Back</button>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-label">Autonomy</div>
+        <div class="btn-row">
+          <button id="follow-btn" onclick="toggleFollow()">&#127919; Follow Me</button>
+        </div>
+        <select id="follow-target">
+          <option value="person">Follow: person</option>
+          <option value="sports ball">Follow: ball</option>
+          <option value="dog">Follow: dog</option>
+          <option value="cat">Follow: cat</option>
+          <option value="bottle">Follow: bottle</option>
+          <option value="chair">Follow: chair</option>
+        </select>
+        <div id="follow-status">Drives the car on its own to keep the target centred and at a fixed distance. Any manual input disarms it. Give it clear floor space before arming.</div>
+      </section>
+      <section class="panel">
+        <div class="panel-label">Classic CV</div>
+        <div class="btn-row">
+          <button id="motion-btn" onclick="toggleCV('motion')">&#128064; Motion</button>
+          <button id="line-btn" onclick="toggleCV('line')">&#12336; Line</button>
+        </div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button id="chase-btn" onclick="toggleCV('chase')">&#127912; Colour chase</button>
+        </div>
+        <div class="cv-row">
+          <input type="color" id="cv-color" value="#dc2828">
+          <button id="cv-sample" onclick="sampleColour()">Sample centre</button>
+          <label><input type="checkbox" id="cv-invert"> light line</label>
+        </div>
+        <div id="cv-status">No models and no internet &mdash; pure pixel maths, so these keep up with the video stream on the car's own WiFi. Line and Colour chase drive the car; give it floor space, and leave the Speed slider high since these cap themselves well below it.</div>
+      </section>
       <section class="panel">
         <div class="panel-label">Vision</div>
         <div class="btn-row">
@@ -670,49 +735,6 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         </div>
         <div id="expr-status">Reads facial expressions (happy/sad/surprised/...) &mdash; needs internet once to load.</div>
       </section>
-
-      <section class="panel">
-        <div class="panel-label">Classic CV</div>
-        <div class="btn-row">
-          <button id="motion-btn" onclick="toggleCV('motion')">&#128064; Motion</button>
-          <button id="line-btn" onclick="toggleCV('line')">&#12336; Line</button>
-        </div>
-        <div class="btn-row" style="margin-top:8px;">
-          <button id="chase-btn" onclick="toggleCV('chase')">&#127912; Colour chase</button>
-        </div>
-        <div class="cv-row">
-          <input type="color" id="cv-color" value="#dc2828">
-          <button id="cv-sample" onclick="sampleColour()">Sample centre</button>
-          <label><input type="checkbox" id="cv-invert"> light line</label>
-        </div>
-        <div id="cv-status">No models and no internet &mdash; pure pixel maths, so these keep up with the video stream on the car's own WiFi. Line and Colour chase drive the car; give it floor space, and leave the Speed slider high since these cap themselves well below it.</div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-label">Offline</div>
-        <div id="offline-stats">Checking cache&hellip;</div>
-        <div id="offline-status">Model files are saved to this browser as they download. Turn the Vision features on once somewhere with internet and they'll work afterwards on the car's own WiFi, which has none.</div>
-        <div class="btn-row" style="margin-top:8px;">
-          <button id="offline-btn" onclick="clearOfflineCache()">&#128465; Clear cached models</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-label">Autonomy</div>
-        <div class="btn-row">
-          <button id="follow-btn" onclick="toggleFollow()">&#127919; Follow Me</button>
-        </div>
-        <select id="follow-target">
-          <option value="person">Follow: person</option>
-          <option value="sports ball">Follow: ball</option>
-          <option value="dog">Follow: dog</option>
-          <option value="cat">Follow: cat</option>
-          <option value="bottle">Follow: bottle</option>
-          <option value="chair">Follow: chair</option>
-        </select>
-        <div id="follow-status">Drives the car on its own to keep the target centred and at a fixed distance. Any manual input disarms it. Give it clear floor space before arming.</div>
-      </section>
-
       <section class="panel">
         <div class="panel-label">Capture</div>
         <div class="btn-row">
@@ -721,26 +743,6 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         </div>
         <div id="record-status"></div>
       </section>
-
-      <section class="panel">
-        <div class="panel-label">Drive</div>
-        <div id="joystick-container">
-          <div id="joystick-base">
-            <div id="joystick-thumb"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-label">Manual</div>
-        <div id="dpad">
-          <button id="forward" onpointerdown="document.dispatchEvent(fwdpress);" onpointerup="document.dispatchEvent(fwdrelease);" onpointerleave="document.dispatchEvent(fwdrelease);">&#9650; Fwd</button>
-          <button id="turnleft" onpointerdown="document.dispatchEvent(leftpress);" onpointerup="document.dispatchEvent(leftrelease);" onpointerleave="document.dispatchEvent(leftrelease);">&#9664; Left</button>
-          <button id="turnright" onpointerdown="document.dispatchEvent(rightpress);" onpointerup="document.dispatchEvent(rightrelease);" onpointerleave="document.dispatchEvent(rightrelease);">Right &#9654;</button>
-          <button id="backward" onpointerdown="document.dispatchEvent(backpress);" onpointerup="document.dispatchEvent(backrelease);" onpointerleave="document.dispatchEvent(backrelease);">&#9660; Back</button>
-        </div>
-      </section>
-
       <section class="panel">
         <div class="panel-label">Systems</div>
         <div class="slider-row">
@@ -776,7 +778,14 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           </div>
         </div>
       </section>
-
+      <section class="panel">
+        <div class="panel-label">Offline</div>
+        <div id="offline-stats">Checking cache&hellip;</div>
+        <div id="offline-status">Model files are saved to this browser as they download. Turn the Vision features on once somewhere with internet and they'll work afterwards on the car's own WiFi, which has none.</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button id="offline-btn" onclick="clearOfflineCache()">&#128465; Clear cached models</button>
+        </div>
+      </section>
       <footer id="app-footer">
         <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" target="_blank" rel="noopener">&#128214; Official KS5017 Tutorial</a>
         &nbsp;|&nbsp;
