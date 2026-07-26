@@ -176,6 +176,27 @@
   </div>
 
   <div class="panel">
+    <h3>Build stamp <span class="tag ok">diagnostics</span></h3>
+    <p>There was no way to tell what firmware a given car was running short of
+    reflashing it &mdash; which made &ldquo;are you sure that's the current build?&rdquo;
+    unanswerable, despite the troubleshooting notes leaning on that question more than
+    once. The control page footer, <code>/status</code> and the serial console at boot
+    now all report the version, the compiler's <code>__DATE__ __TIME__</code>, and the
+    git revision, the last stamped in by a PlatformIO pre-build hook.</p>
+    <p>The hook fails soft by design: no git binary, no <code>.git</code> directory, or a
+    shallow checkout leaves the firmware's own <code>nogit</code> default in place rather
+    than breaking the build. Arduino IDE has no pre-build hook at all, so builds from
+    there always report <code>nogit</code> &mdash; an honest &ldquo;unknown&rdquo; being
+    considerably better than a stale hash. An uncommitted tree is reported as
+    <code>-dirty</code> and rendered in amber, since the hash alone no longer identifies
+    the binary in that case.</p>
+    <p>The control page is also now served with <code>Cache-Control: no-store</code>.
+    The page is compiled into the firmware, so a cached copy in a browser could
+    otherwise pair an old UI with new firmware &mdash; exactly the mismatch the stamp
+    exists to expose.</p>
+  </div>
+
+  <div class="panel">
     <h3>Classic CV: motion, line, colour chase <span class="tag ok">no network</span></h3>
     <p>Three features that need no model and no internet, because they are plain pixel
     maths over the frame buffer. They also keep up with the video stream rather than the

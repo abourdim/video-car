@@ -64,6 +64,8 @@ void setup() {
   i2c_init();  //Initialize IIC, SDA is IO14, SCL is IO13, the pins are bound to the motor driver board and cannot be modified.
 
   Serial.begin(115200);
+  Serial.println();
+  Serial.printf("VideoCar v%s  |  built %s  |  %s\n", FW_VERSION, FW_BUILD, GIT_REV);
   Serial.setDebugOutput(true);
   Serial.println();
 

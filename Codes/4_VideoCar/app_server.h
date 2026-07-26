@@ -55,6 +55,28 @@ unsigned long lastCommandMillis = 0;
 #include "esp_camera.h"
 #include "img_converters.h"
 #include "Arduino.h"
+
+// --- Build identification ---------------------------------------------------
+// There was previously no way to tell what was actually running on a car short
+// of reflashing it, which made "are you sure that's the current firmware?" an
+// unanswerable question -- and the troubleshooting notes lean on that question
+// more than once. All three of these surface in the footer of the control page,
+// in /status, and on the serial console at boot.
+//
+// FW_VERSION is bumped by hand; there's no release process behind it, it just
+// gives the build a name a human can say out loud.
+#define FW_VERSION "1.5.0"
+
+// Set by the compiler, so it is always right and needs no build system support.
+#define FW_BUILD __DATE__ " " __TIME__
+
+// Injected by PlatformIO's pre-build hook (see firmware/4_videocar/git_rev.py),
+// which appends "-dirty" when the tree has uncommitted changes. The Arduino IDE
+// has no pre-build hook, so builds from there fall back to "nogit" -- an honest
+// "unknown", rather than a stale hash that would be worse than no hash at all.
+#ifndef GIT_REV
+#define GIT_REV "nogit"
+#endif
 #include "SetMotor.h"
 
 
@@ -453,7 +475,10 @@ static esp_err_t status_handler(httpd_req_t *req) {
   p += sprintf(p, "\"hmirror\":%d,", hmirrorState);
   p += sprintf(p, "\"speed\":%d,", speed / 31);
   p += sprintf(p, "\"trim\":%d,", trim);
-  p += sprintf(p, "\"flash\":%d", flashLevel);
+  p += sprintf(p, "\"flash\":%d,", flashLevel);
+  p += sprintf(p, "\"version\":\"%s\",", FW_VERSION);
+  p += sprintf(p, "\"build\":\"%s\",", FW_BUILD);
+  p += sprintf(p, "\"gitrev\":\"%s\"", GIT_REV);
   *p++ = '}';
   *p++ = 0;
   httpd_resp_set_type(req, "application/json");
@@ -590,6 +615,8 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           input[type=range]::-moz-range-thumb{border:2px solid var(--panel);height:20px;width:20px;border-radius:50%;
             background:var(--cyan);cursor:pointer;}
           #app-footer{width:100%;text-align:center;padding:16px 0 4px;}
+          #fw-build{display:block;margin-top:8px;color:var(--muted);font-size:10px;
+            letter-spacing:.06em;font-family:var(--mono,monospace);opacity:.75;}
           #app-footer a{color:var(--muted);font-size:11px;letter-spacing:.04em;text-decoration:none;
             border-bottom:1px dotted var(--border);}
           #app-footer a:active,#app-footer a:hover{color:var(--cyan);border-bottom-color:var(--cyan);}
@@ -754,6 +781,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" target="_blank" rel="noopener">&#128214; Official KS5017 Tutorial</a>
         &nbsp;|&nbsp;
         <a href="https://github.com/abourdim/video-car" target="_blank" rel="noopener">&#128187; Source on GitHub</a>
+        <span id="fw-build">firmware &hellip;</span>
       </footer>
     <script>  
    // --- Settings persistence ---
@@ -807,7 +835,19 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
    applySettings(loadLocalSettings());  // instant paint, may be stale/absent
    fetch(document.location.origin + '/status')
      .then(function (r) { return r.json(); })
-     .then(function (vals) { applySettings(vals); saveLocalSettings(); })
+     .then(function (vals) {
+       applySettings(vals);
+       saveLocalSettings();
+       // Stamp the footer from the device itself rather than from anything
+       // baked into this page, so the number shown is the firmware actually
+       // answering, not whatever the browser happens to have cached.
+       var el = document.getElementById('fw-build');
+       if (el && vals.version) {
+         el.textContent = 'firmware v' + vals.version + '  \u00b7  ' + vals.build
+                        + '  \u00b7  ' + vals.gitrev;
+         if (/-dirty$/.test(vals.gitrev || '')) el.style.color = 'var(--amber)';
+       }
+     })
      .catch(function () { /* offline on load -- local cache (if any) stands */ });
 
   // --- Offline asset cache ------------------------------------------------
@@ -2641,6 +2681,12 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
 
 static esp_err_t index_handler(httpd_req_t *req) {
   httpd_resp_set_type(req, "text/html");
+  // The control page is compiled into the firmware, so a browser holding a
+  // cached copy can silently pair an old page with new firmware -- which is
+  // exactly the mismatch the build stamp below exists to make visible. Cheaper
+  // to prevent it: the page is a few tens of KB over local WiFi, and it is
+  // never worth serving a stale one.
+  httpd_resp_set_hdr(req, "Cache-Control", "no-store, must-revalidate");
   return httpd_resp_send(req, (const char *)INDEX_HTML, strlen(INDEX_HTML));
 }
 

@@ -99,6 +99,15 @@ open `http://192.168.4.1` in a browser.
   browser since the ESP32 can't run a neural net alongside everything else.
   Needs internet access on the network the device is using to load the
   models the first time.
+- **Build stamp** -- the control page footer, `/status`, and the serial console
+  at boot all report the firmware version, the compiler's build timestamp, and
+  the git revision it came from (with a `-dirty` suffix, shown in amber, when
+  the tree had uncommitted changes). Previously there was no way to tell what
+  was actually running on a car short of reflashing it. The revision is stamped
+  by a PlatformIO pre-build hook; Arduino IDE has no equivalent, so builds from
+  there report `nogit` rather than a possibly-stale hash. The control page is
+  also served `Cache-Control: no-store`, so a browser can't pair a cached page
+  with newer firmware.
 - **Classic CV (no models, no internet)** -- three features that work on the
   car's own AP with nothing downloaded, because they're plain pixel maths
   rather than a neural net. They also run at full frame rate instead of the
@@ -257,9 +266,9 @@ undervoltage.
 
 **Car doesn't stop when you close the browser tab / lose WiFi:** Shouldn't
 happen -- the firmware failsafe stops the motors after 500ms without a
-command. If you're seeing otherwise, confirm you're running the version from
-this repo (`git log --oneline`) and not stock keyestudio firmware, which has
-no such failsafe.
+command. If you're seeing otherwise, check the build stamp in the control page
+footer -- if it says `nogit` or an unexpected commit, you may be running stock
+keyestudio firmware, which has no such failsafe.
 
 **A Vision feature says it can't load, on the car's own WiFi:** Expected the
 first time. The models come from a CDN and the car's AP has no internet. Join
@@ -275,7 +284,8 @@ it, which requires the CORS header the firmware sets on port 81. If they ever
 disagree the browser refuses the image outright. The page detects this and
 reconnects without CORS after two failures, falling back to `/capture`
 polling, so it should self-heal within a couple of seconds -- if it doesn't,
-you're running mismatched firmware and page versions. Reflash.
+compare the commit in the footer's build stamp against `git log --oneline`.
+Reflash if they disagree.
 
 **Line follower doesn't move at all:** Put the Speed slider at maximum. It
 multiplies with the mode's own cap, and `LINE_SPEED` is deliberately low

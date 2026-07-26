@@ -148,6 +148,15 @@ cd video-car</code></pre>
         entirely in the browser since the ESP32 can't run a neural net alongside
         everything else. Needs internet access on the network the device is using to
         load the models the first time.</li>
+      <li><strong>Build stamp</strong> &mdash; the control page footer, <code>/status</code>
+        and the serial console at boot all report the firmware version, the compiler's
+        build timestamp, and the git revision it came from (with a <code>-dirty</code>
+        suffix, shown in amber, when the tree had uncommitted changes). Previously there
+        was no way to tell what was actually running on a car short of reflashing it. The
+        revision is stamped by a PlatformIO pre-build hook; Arduino IDE has no equivalent,
+        so builds from there report <code>nogit</code> rather than a possibly-stale hash.
+        The page is also served <code>Cache-Control: no-store</code>, so a browser can't
+        pair a cached page with newer firmware.</li>
       <li><strong>Classic CV (no models, no internet)</strong> &mdash; three features
         that work on the car's own AP with nothing downloaded, because they're plain pixel
         maths rather than a neural net. They also run at full frame rate instead of the
@@ -335,9 +344,9 @@ README.html               This document</code></pre>
 
     <h3>Car doesn't stop when you close the browser tab / lose WiFi</h3>
     <p>Shouldn't happen &mdash; the firmware failsafe stops the motors after 500ms
-    without a command. If you're seeing otherwise, confirm you're running the version
-    from this repo (<code>git log --oneline</code>) and not stock keyestudio firmware,
-    which has no such failsafe.</p>
+    without a command. If you're seeing otherwise, check the build stamp in the control page
+    footer &mdash; if it reads <code>nogit</code> or an unexpected commit, you may be
+    running stock keyestudio firmware, which has no such failsafe.</p>
 
     <h3>A Vision feature says it can't load, on the car's own WiFi</h3>
     <p>Expected the first time. The models come from a CDN and the car's AP has no
@@ -352,7 +361,8 @@ README.html               This document</code></pre>
     those ever disagree the browser refuses the image outright. The page detects this and
     reconnects without CORS after two failures, falling back to <code>/capture</code>
     polling, so it should self-heal within a couple of seconds &mdash; if it doesn't,
-    you're running mismatched firmware and page versions. Reflash.</p>
+    compare the commit in the footer's build stamp against <code>git log --oneline</code>
+    and reflash if they disagree.</p>
 
     <h3>Line follower doesn't move at all</h3>
     <p>Put the Speed slider at maximum. It multiplies with the mode's own cap, and
