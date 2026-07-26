@@ -172,7 +172,8 @@ firmware/                PlatformIO projects, one per sketch
   3_motor/                Motor driver test sequence (drives on boot -- give it room!)
   4_videocar/              Mirrors Codes/4_VideoCar -- the main project
 launch.sh                Interactive PlatformIO menu, lets you pick which app to build/flash/monitor
-report.html               Detailed change report
+README.html               Rendered version of this file
+report.html               Detailed change report -- what changed, why, and what's still open
 ```
 
 `Codes/4_VideoCar` and `firmware/4_videocar/src` are kept in sync -- same
@@ -259,6 +260,38 @@ happen -- the firmware failsafe stops the motors after 500ms without a
 command. If you're seeing otherwise, confirm you're running the version from
 this repo (`git log --oneline`) and not stock keyestudio firmware, which has
 no such failsafe.
+
+**A Vision feature says it can't load, on the car's own WiFi:** Expected the
+first time. The models come from a CDN and the car's AP has no internet. Join
+a router, turn the feature on once so its files land in the offline cache
+(the Offline panel will show the count and size), then go back to the car's
+AP -- it'll work from then on. Plates is the exception: Tesseract.js loads
+from inside a Web Worker that the cache can't intercept, so it stays
+internet-only.
+
+**The video feed dies when a Vision or autonomy feature starts:** The stream
+is fetched with `crossorigin="anonymous"` so the page can read frames from
+it, which requires the CORS header the firmware sets on port 81. If they ever
+disagree the browser refuses the image outright. The page detects this and
+reconnects without CORS after two failures, falling back to `/capture`
+polling, so it should self-heal within a couple of seconds -- if it doesn't,
+you're running mismatched firmware and page versions. Reflash.
+
+**Line follower doesn't move at all:** Put the Speed slider at maximum. It
+multiplies with the mode's own cap, and `LINE_SPEED` is deliberately low
+(26), so a reduced slider can leave the motors below their stiction floor.
+If it still won't move, raise `LINE_SPEED` in `app_server.h`.
+
+**Line follower weaves or loses the line:** Lower `LINE_KP`, don't raise it.
+The loop is limited by round-trip latency rather than by gain, and more gain
+makes a delay-dominated loop worse. If it misses corners instead, raise
+`LINE_TURN_CUT` so it slows down more while steering. If it reports "looking
+for a line" over a real line, the contrast is too low -- use wider, darker
+tape before touching `LINE_MIN_CONTRAST`.
+
+**An autonomous mode won't stay armed:** Any manual input disarms it by
+design, as does hiding the browser tab, and losing the target stops the car
+after 0.7s and disarms after 3s. All three are intentional.
 
 **No authentication on the control endpoints:** Known, unaddressed
 limitation carried over from the original sketch -- see `report.html` for

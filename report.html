@@ -32,6 +32,7 @@
     color:var(--bg);background:var(--amber);border-radius:4px;padding:2px 7px;margin-left:8px;
     vertical-align:middle;}
   .tag.danger{background:var(--danger);}
+  .tag.ok{background:var(--cyan);}
   ul{margin:8px 0 0;padding-left:20px;font-size:13.5px;}
   li{margin:4px 0;}
   code, .mono{font-family:var(--mono);color:var(--cyan);font-size:.92em;}
@@ -61,21 +62,31 @@
     <div class="meta">
       Repo: <a href="https://github.com/abourdim/video-car" style="color:var(--amber);">github.com/abourdim/video-car</a> &nbsp;|&nbsp;
       Package: <code>Codes/4_VideoCar</code> &nbsp;|&nbsp;
-      Latest commit: <code>HEAD</code> &nbsp;|&nbsp;
-      2026-07-18 &nbsp;|&nbsp;
+      Latest commit: <code>c009c1a</code> &nbsp;|&nbsp;
+      2026-07-26 &nbsp;|&nbsp;
       <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" style="color:var(--cyan);">&#128214; Official tutorial (KS5017)</a>
     </div>
   </header>
 
   <h2><span class="dot"></span>Summary</h2>
   <div class="panel">
-    <p>This package tracks three rounds of enhancements made to the keyestudio ESP32-CAM
-    Video Car sketch's web control server (<code>app_server.h</code>) and main sketch
-    (<code>4_VideoCar.ino</code>): a virtual joystick control, a connection-loss failsafe
-    with WiFi auto-reconnect, and a full visual redesign of the on-device control page.
-    The repo has two commits &mdash; the original unmodified sketch as a baseline, and a
-    second commit with all enhancements applied, so the diff against stock keyestudio
-    firmware is always inspectable with <code>git diff</code>.</p>
+    <p>This package tracks the enhancements made to the keyestudio ESP32-CAM Video Car
+    sketch's web control server (<code>app_server.h</code>) and main sketch
+    (<code>4_VideoCar.ino</code>). It began as three changes &mdash; a virtual joystick,
+    a connection-loss failsafe with WiFi auto-reconnect, and a redesigned control page
+    &mdash; and has since grown a browser-side computer-vision suite, an offline model
+    cache, and three autonomous driving modes.</p>
+    <p>The first commit is the original unmodified sketch, so the diff against stock
+    keyestudio firmware is always inspectable with <code>git diff 3df6eee..HEAD</code>.
+    Every commit is self-contained and touches both source trees together, so
+    <code>Codes/4_VideoCar</code> and <code>firmware/4_videocar/src</code> never drift
+    apart mid-history and any commit can be checked out and built from either system.</p>
+    <p><strong>Testing status.</strong> Everything from <code>e47a1c5</code> onward has
+    been desk-verified only &mdash; JavaScript parsed, C++ balanced, control laws and CV
+    kernels unit-tested against synthetic inputs, and the autonomy arbiter tested for
+    mutual exclusion. None of it has been flashed to hardware. The autonomous modes in
+    particular should be tested on blocks, with a hand on the joystick, before being
+    trusted on the floor.</p>
   </div>
 
   <h2><span class="dot"></span>Features added</h2>
@@ -119,6 +130,86 @@
     <img class="shot" src="preview_full.png" alt="Redesigned control page screenshot">
   </div>
 
+  <div class="panel">
+    <h3>Browser-side vision suite <span class="tag">perception</span></h3>
+    <p>Seven overlays that run entirely in the phone or laptop browser against frames
+    from the car, with no inference on the ESP32 itself: object detection and face
+    detection (AI Vision), body pose, hand tracking, facial expression, QR/barcode
+    reading, and licence-plate OCR. The ESP32 only ever serves JPEG frames; every model
+    runs client-side, which is what makes any of this possible on a 240&nbsp;MHz
+    microcontroller.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Offline model cache <span class="tag ok">fixes a shipped gap</span></h3>
+    <p>Those models load from a CDN, and the car's default AP has no route to the
+    internet &mdash; so six of the advertised features failed out of the box and the only
+    workaround was to abandon AP mode for a router. <code>window.fetch</code> is now
+    wrapped with a read-through cache in IndexedDB over a whitelist of model hosts: use a
+    feature once with internet and its files are kept, and it works on the car's own AP
+    from then on.</p>
+    <p>A service worker is the textbook approach here and is unavailable &mdash; service
+    workers <em>and</em> the Cache API are both restricted to secure contexts, and this
+    page is served over plain HTTP from <code>192.168.4.1</code>. IndexedDB carries no
+    such restriction. Caching happens on read rather than behind a &ldquo;download
+    all&rdquo; button, because weight-shard URLs are derived from <code>model.json</code>
+    at load time and aren't knowable in advance. Both script loaders moved from
+    <code>&lt;script src&gt;</code> to <code>fetch()</code>, since a <code>src</code>
+    attribute never reaches the shim.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Follow-me <span class="tag danger">autonomous</span></h3>
+    <p>The first feature that drives the car rather than annotating the picture. A
+    proportional controller turns COCO-SSD's bounding box into a steer and throttle
+    &mdash; horizontal offset from frame centre for steering, box height as a stand-in
+    for range &mdash; and sends them to the existing <code>/joystick</code> endpoint, so
+    the firmware needed no new handler and the 500&nbsp;ms failsafe covers this mode for
+    free.</p>
+    <p>Frames come from the live MJPEG <code>&lt;img&gt;</code> via
+    <code>drawImage()</code> rather than a second <code>/capture</code> poll, which is
+    what makes a control loop viable at all. That needs CORS on the stream, since port 81
+    is a separate origin from the page; if that header is ever missing the browser
+    refuses the image outright rather than merely tainting the canvas, so the stream drops
+    <code>crossorigin</code> and reconnects plain after two failures and follow-me falls
+    back to <code>/capture</code>. Video always wins.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Classic CV: motion, line, colour chase <span class="tag ok">no network</span></h3>
+    <p>Three features that need no model and no internet, because they are plain pixel
+    maths over the frame buffer. They also keep up with the video stream rather than the
+    0.4&ndash;2.5&nbsp;Hz a neural net manages on a phone, which is what makes the two
+    driving ones usable as control loops.</p>
+    <ul>
+      <li><strong>Motion</strong> &mdash; passive frame differencing. Subtracts the global
+        mean shift first: the OV2640 hunts auto-exposure continuously, and without
+        compensation every adjustment reads as full-frame motion.</li>
+      <li><strong>Line</strong> &mdash; follows a dark line on a light floor or the
+        inverse. Thresholds midway between the band's mean and its darkest pixel so it
+        adapts to real contrast, with a minimum-contrast guard that rejects a blank floor
+        rather than chasing sensor noise.</li>
+      <li><strong>Colour chase</strong> &mdash; drives at the nearest blob of a chosen
+        colour, matched in rg-chromaticity so a shadow across the target doesn't lose
+        it.</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h3>Autonomy arbiter <span class="tag danger">safety</span></h3>
+    <p>With three autonomous modes plus two manual ones, something has to decide who
+    drives. Autonomous modes are <em>sources of setpoints, never senders</em>: each parks
+    a steer/throttle value and a single 100&nbsp;ms loop forwards it, with priority
+    joystick&nbsp;&gt;&nbsp;autonomous&nbsp;&gt;&nbsp;D-pad. Claiming the arbiter evicts
+    the incumbent, so two controllers can never drive at once, and any manual input
+    disarms all of them. Motion is deliberately excluded from the registry &mdash; it
+    doesn't drive, so there's no reason to stop watching for movement because something
+    else is steering.</p>
+    <p>This shape is a direct response to the bug in <em>Resolved issues</em> below: two
+    independent senders racing each other is what broke both manual drive modes, and an
+    autonomous sender racing a manual one would be the worse version of it.</p>
+  </div>
+
   <h2><span class="dot"></span>Files changed</h2>
   <div class="panel">
     <table>
@@ -129,7 +220,15 @@
       <tr><td class="mono">Codes/4_VideoCar/app_server.h</td>
           <td><code>/joystick</code> handler, heartbeat wiring, full HTML/CSS/JS
               rewrite of the control page, Capture panel (snapshot/record)</td></tr>
-      <tr><td class="mono">Codes/4_VideoCar/SetMotor.h</td><td>Unchanged</td></tr>
+      <tr><td class="mono">Codes/4_VideoCar/SetMotor.h</td>
+          <td>Unchanged. Its directional helpers are now bypassed by inline
+              <code>i2c_Write</code> calls in the handlers; only
+              <code>Car_stop()</code> is still called</td></tr>
+      <tr><td class="mono">Codes/4_VideoCar/lib/</td>
+          <td><strong>Removed</strong> &mdash; five vendored <code>dl_lib</code> headers
+              (~3,100 lines) whose only consumer was unreachable code</td></tr>
+      <tr><td class="mono">report.html</td>
+          <td>This document</td></tr>
       <tr><td class="mono">Codes/1_Blink, 2_breathing_light, 3_motor</td>
           <td>Unchanged &mdash; included for a complete package</td></tr>
       <tr><td class="mono">firmware/</td>
@@ -144,73 +243,227 @@
   <h2><span class="dot"></span>Commit history</h2>
   <div class="panel">
     <div class="commit">
-      <div class="hash">HEAD</div>
+      <div class="hash">c009c1a</div>
       <div class="msg">
-        <span class="subject">Add README.md; update report.html with the PlatformIO/PSRAM fix</span>
-        <span class="body">Documentation pass covering both build systems, feature
-summary, and troubleshooting for the camera/toolchain issue below.</span>
+        <span class="subject">Retune the line follower: the shipped gain and speed were unstable</span>
+        <span class="body">Simulated the closed loop -- plant, firmware mixing, and a delay buffer for the camera/JPEG/WiFi/HTTP/I2C round trip -- instead of trusting the numbers I picked by eye. The shipped LINE_SPEED=42 / LINE_KP=1.5 holds together at…</span>
       </div>
     </div>
     <div class="commit">
-      <div class="hash">971ef03</div>
+      <div class="hash">c17babf</div>
       <div class="msg">
-        <span class="subject">firmware: pin PlatformIO platform version and enable PSRAM build flags</span>
-        <span class="body">Fixes Camera init failed (0x106) under PlatformIO --
-see Resolved Issues above.</span>
+        <span class="subject">Add Classic CV: motion, line following, colour chase -- no models, no network</span>
+        <span class="body">Every perception feature so far needs a neural net downloaded from the internet, which the car&#x27;s own AP cannot reach. These three need neither: they are plain pixel maths over the frame buffer, so they work on the isolated AP…</span>
       </div>
     </div>
     <div class="commit">
-      <div class="hash">8665bf9</div>
+      <div class="hash">2134e23</div>
       <div class="msg">
-        <span class="subject">Fix camera brownout/init-failure resilience</span>
-        <span class="body">Enable brownout-detector workaround, retry camera init
-at 10MHz XCLK, blink a visible LED error pattern on persistent failure.</span>
+        <span class="subject">Cache models in IndexedDB so Vision works on the car&#x27;s own AP</span>
+        <span class="body">The offline gap the previous README commit documented, actually fixed. Every Vision feature loads scripts from jsdelivr and weights from Google&#x27;s model hosting, and the ship configuration puts the car on an isolated AP with a…</span>
       </div>
     </div>
     <div class="commit">
-      <div class="hash">5fb8eef</div>
+      <div class="hash">2973d2d</div>
       <div class="msg">
-        <span class="subject">Add PlatformIO build system + launch.sh menu (build/flash/monitor)</span>
-        <span class="body">firmware/ PlatformIO project targeting env:esp32cam,
-plus an interactive menu script for install/build/flash/monitor.</span>
+        <span class="subject">Add Follow-me: closed-loop autonomous target following</span>
+        <span class="body">Every Vision feature so far detects, draws a box, and stops there -- nothing was ever wired to the motors. This closes the loop. COCO-SSD&#x27;s bounding box for a chosen class feeds a proportional controller (horizontal offset from…</span>
       </div>
     </div>
     <div class="commit">
-      <div class="hash">68807ec</div>
+      <div class="hash">52769d5</div>
       <div class="msg">
-        <span class="subject">VideoCar: add snapshot & client-side video recording controls</span>
-        <span class="body">Capture panel: Snapshot downloads a JPEG via /capture;
-Record encodes a .webm/.mp4 client-side via Canvas + MediaRecorder.</span>
+        <span class="subject">README: call out that the Vision features need internet the default AP lacks</span>
+        <span class="body">Ship config is ap = 1, which puts the car on its own isolated network with no route to the CDN the models load from -- so Pose, Hand tracking, Facial expression, Plates, AI Vision and the jsQR fallback all fail to start out of…</span>
       </div>
     </div>
     <div class="commit">
-      <div class="hash">b4f3caa</div>
+      <div class="hash">40ccd35</div>
       <div class="msg">
-        <span class="subject">Add report.html: change report summarizing joystick, failsafe, and UI redesign work</span>
-        <span class="body">This document.</span>
+        <span class="subject">Apply Speed and Trim consistently across turns and the joystick</span>
+        <span class="body">Three inconsistencies in how the two sliders were honoured: - Turns hardcoded PWM 150 and ignored Speed entirely. They now scale off the slider via TURN_SPEED_PERCENT (60), which at the default slider position (speed = 248)…</span>
       </div>
     </div>
     <div class="commit">
-      <div class="hash">5685f2b</div>
+      <div class="hash">f984301</div>
       <div class="msg">
-        <span class="subject">VideoCar: add joystick control, connection failsafe, and mission-control UI redesign</span>
-        <span class="body">New /joystick endpoint, on-screen virtual joystick, 500ms
-motor failsafe, WiFi auto-reconnect, MJPEG stream auto-recovery,
-live connection indicator, full dark-theme UI rewrite, fixed
-duplicate id="speed" bug.</span>
+        <span class="subject">Remove unreachable RGB888 path in capture_handler and the vendored dl_lib headers</span>
+        <span class="body">Everything after the JPEG pass-through block in capture_handler was dead: that block returns in both branches, so the dl_matrix3du_alloc / fmt2rgb888 / fmt2jpg_cb round-trip below it could never execute. It was the only consumer…</span>
       </div>
     </div>
     <div class="commit">
-      <div class="hash">3df6eee</div>
+      <div class="hash">5b86f1a</div>
       <div class="msg">
-        <span class="subject">Initial import: keyestudio ESP32-CAM sketches</span>
-        <span class="body">Baseline, unmodified from the original Codes.zip upload
-(Blink, breathing light, motor, VideoCar).</span>
+        <span class="subject">Enable lru_purge_enable on both HTTP servers</span>
+        <span class="body">The control page keeps several keep-alive connections open simultaneously (the 100ms drive loop, the /status heartbeat, plus a steady stream of /capture pulls when Vision or recording is on). With the default config, once…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">e222c97</div>
+      <div class="msg">
+        <span class="subject">Bound the station-mode WiFi connect and fall back to AP on timeout</span>
+        <span class="body">setup() had an unbounded `while (WiFi.status() != WL_CONNECTED)` spin, so with ap = 0 and a wrong password, an out-of-range router, or a 5GHz-only SSID, setup() never returned: no camera server, no AP, no way in without attaching…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">90cdf2e</div>
+      <div class="msg">
+        <span class="subject">Fix connection-loss failsafe not applying to turns</span>
+        <span class="body">The Left and Right commands set the motors but never touched actstate, and loop() only force-stops when actstate != stp. Start a turn from a standstill and actstate stayed stp, so losing WiFi mid-turn left the car spinning in…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">e47a1c5</div>
+      <div class="msg">
+        <span class="subject">Fix joystick and D-pad fighting each other over the control endpoint</span>
+        <span class="body">The control page ran two independent 100ms timers: the keyboard/D-pad loop and the joystick loop. Each sent a STOP whenever its *own* input was idle -- val=5 from one, x=0&amp;y=0 from the other -- with no awareness of the other. So…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">c33ba42</div>
+      <div class="msg">
+        <span class="subject">Add Pose detection, Hand tracking, and Facial expression to Vision</span>
+        <span class="body">Three more detection types, all verified against their real published npm tarballs before use (same discipline as blazeface/tesseract/jsQR): - Pose (MoveNet, @tensorflow-models/pose-detection): skeleton dots + limb lines, &#x27;tfjs&#x27;…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">01a646e</div>
+      <div class="msg">
+        <span class="subject">Add QR / Barcode detection: native BarcodeDetector API with jsQR fallback</span>
+        <span class="body">Unlike everything else in Vision, modern browsers have a BUILT-IN barcode/QR scanner (BarcodeDetector, part of the Shape Detection API) -- no model download, no CDN dependency, no internet needed at all, and it works even while…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">2cca927</div>
+      <div class="msg">
+        <span class="subject">Add Plates: experimental license-plate reader via detected vehicle + OCR</span>
+        <span class="body">There&#x27;s no off-the-shelf, CDN-loadable license-plate-detector model like there is for objects (COCO-SSD) or faces (BlazeFace), so this is a deliberately simpler heuristic pipeline instead of pretending otherwise: - Reuses the…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">48b0ae0</div>
+      <div class="msg">
+        <span class="subject">Add GitHub repo links now that it&#x27;s actually hosted there</span>
+        <span class="body">- README.md / README.html: repo link + git clone instructions at the top - report.html: repo link in the header meta line - Control page footer (app_server.h): &#x27;Source on GitHub&#x27; link alongside the existing tutorial link</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">258c0fc</div>
+      <div class="msg">
+        <span class="subject">AI Vision: diagnose model-weight load failures separately from script load failures</span>
+        <span class="body">Reported: after the BlazeFace CDN URL fix, both scripts now load fine, but toggling AI Vision on still shows a generic &#x27;Failed to fetch&#x27; with no useful detail. Root cause: coco-ssd and blazeface fetch their model *weight* files…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">6455bcf</div>
+      <div class="msg">
+        <span class="subject">Sync firmware/4_videocar/src/4_VideoCar.ino (missed in the persistence commit)</span>
+        <span class="body"></span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">e819d29</div>
+      <div class="msg">
+        <span class="subject">Add settings persistence: NVS flash on the car + localStorage in the browser</span>
+        <span class="body">Every control (Speed/Trim/Lights/Quality/Resolution/Flip/Mirror) used to reset to hardcoded defaults on every reboot/reflash and every fresh page load. Now persisted both ways, per request: Firmware (Preferences/NVS, namespace…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">a913bb3</div>
+      <div class="msg">
+        <span class="subject">Fix BlazeFace CDN URL for real this time (verified against actual npm tarball)</span>
+        <span class="body">Previous fix (bare package URL, relying on jsdelivr auto-resolving via the package&#x27;s own &#x27;jsdelivr&#x27; metadata field) still failed -- because that field points to &#x27;dist/blazeface.min.js&#x27;, which does not exist in the published 0.1.0…</span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">0b29e99</div>
+      <div class="msg">
+        <span class="subject">README/README.html: mention flip/mirror controls in the feature list</span>
+        <span class="body"></span>
+      </div>
+    </div>
+    <div class="commit">
+      <div class="hash">&hellip;</div>
+      <div class="msg">
+        <span class="subject">18 earlier commits</span>
+        <span class="body">Initial import of the stock keyestudio sketches through the PlatformIO/PSRAM work and the vision suite. Full history: git log --reverse.</span>
       </div>
     </div>
   </div>
 
   <h2><span class="dot"></span>Resolved issues</h2>
+
+  <div class="panel">
+    <h3>Joystick and D-pad were fighting over the control endpoint <span class="tag danger">fixed</span></h3>
+    <p>The control page ran two independent 100&nbsp;ms timers &mdash; one for the
+    keyboard/D-pad, one for the joystick &mdash; and each sent a <em>stop</em> whenever
+    its own input was idle, with no awareness of the other. Dragging the joystick had the
+    D-pad loop calling <code>Car_stop()</code> ten times a second underneath it, and
+    holding the D-pad had the joystick loop doing the same.</p>
+    <p><strong>Why it went unnoticed:</strong> motor inertia smoothed a roughly 50% duty
+    cycle into something that felt jerky rather than broken, so it read as a tuning
+    problem rather than a bug.</p>
+    <p><strong>Fix:</strong> a single arbitrated loop. Whichever input is actively in use
+    owns the car; exactly one request goes out every 100&nbsp;ms either way, preserving
+    the heartbeat the firmware failsafe depends on.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Connection-loss failsafe didn't cover turns <span class="tag danger">fixed</span></h3>
+    <p>The Left and Right commands set the motors but never updated
+    <code>actstate</code>, and <code>loop()</code> only force-stops when
+    <code>actstate != stp</code>. Starting a turn from a standstill therefore left the
+    state at <code>stp</code>, so losing WiFi mid-turn left the car spinning in place
+    indefinitely &mdash; precisely the scenario the failsafe exists to cover.</p>
+    <p><strong>Fix:</strong> a dedicated <code>trn</code> state, since a turn is neither
+    forward nor reverse. Nothing compares against a specific state, only against
+    <code>stp</code>, so the change is inert apart from closing the hole.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Unbounded WiFi connect could brick the car in station mode <span class="tag danger">fixed</span></h3>
+    <p><code>setup()</code> spun in <code>while (WiFi.status() != WL_CONNECTED)</code>
+    with no timeout. With <code>ap = 0</code> and a wrong password, an out-of-range
+    router, or a 5&nbsp;GHz-only SSID, <code>setup()</code> never returned: no camera
+    server, no AP, and no way to reach the car without opening it up and attaching a
+    serial cable.</p>
+    <p><strong>Fix:</strong> bounded at 20&nbsp;s, after which it falls through to AP
+    mode so the car always ends up serving something.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Line follower shipped with an unstable gain <span class="tag">fixed</span></h3>
+    <p>The first line-following defaults were picked by eye. Simulating the closed loop
+    &mdash; plant, firmware mixing, and a delay buffer for the
+    camera/JPEG/WiFi/HTTP/I2C round trip &mdash; showed
+    <code>LINE_SPEED&nbsp;42 / LINE_KP&nbsp;1.5</code> holding together at 80&nbsp;ms of
+    latency and falling apart at realistic ones: wandering at 250&nbsp;ms and driving off
+    the line entirely by 350&nbsp;ms.</p>
+    <p>The failure is characteristic of a delay-dominated loop: <em>raising</em> the gain
+    made it worse. At 250&nbsp;ms, KP&nbsp;2.5 lost the line where KP&nbsp;0.9 tracked to
+    about a centimetre. Dead time can't be gained away, and speed is the real limiter.
+    Defaults are now <code>LINE_SPEED&nbsp;26 / LINE_KP&nbsp;0.9</code>, which held under
+    1.2&nbsp;cm across 80&ndash;350&nbsp;ms with no loss of line anywhere in the sweep.
+    Curve radius turned out not to be the constraint &mdash; hairpins are fine, because
+    the arcade mixing pivots one wheel backwards.</p>
+  </div>
+
+  <div class="panel">
+    <h3>Smaller fixes in the same pass <span class="tag">fixed</span></h3>
+    <ul>
+      <li><code>lru_purge_enable</code> was unset on both HTTP servers. The control page
+        holds several keep-alive connections open at once, and once
+        <code>max_open_sockets</code> filled, the server refused new connections and the
+        page appeared to hang.</li>
+      <li>Turns hardcoded PWM&nbsp;150 and ignored the Speed slider; the joystick ignored
+        Trim entirely; and <code>joystick_handler</code> treated a Speed slider at zero
+        as <em>full speed</em> while the D-pad treated it as stopped.</li>
+      <li>The unreachable RGB888 path in <code>capture_handler</code> and its five
+        vendored <code>dl_lib</code> headers were removed (~3,100 lines).</li>
+      <li>A stray Chinese debug <code>println</code> and an unused global were dropped.</li>
+    </ul>
+  </div>
+
   <div class="panel">
     <h3>Camera init failed (0x106) under PlatformIO only <span class="tag">fixed</span></h3>
     <p>After moving the build to PlatformIO, <code>esp_camera_init()</code> started
@@ -236,15 +489,41 @@ duplicate id="speed" bug.</span>
 
   <h2><span class="dot"></span>Known limitations / open items</h2>
   <div class="panel">
-    <p>Carried over from the original sketch, not yet addressed:</p>
+    <p><strong>Not tested on hardware.</strong> Everything from <code>e47a1c5</code>
+    onward is desk-verified only. The autonomous modes should be run on blocks first,
+    with a hand on the joystick.</p>
+    <p><strong>Security</strong>, carried over from the original sketch:</p>
     <ul>
-      <li>No authentication on <code>/control</code>, <code>/joystick</code>, or
-        <code>/status</code> &mdash; anyone on the AP can drive the car. Default AP
-        password (<code>88888888</code>) is also weak.</li>
-      <li><code>CORS: Access-Control-Allow-Origin: *</code> means any page loaded in a
-        connected client's browser could issue commands.</li>
-      <li>Dead RGB888 fallback code in <code>capture_handler</code> (unreachable, since
-        the camera is always configured for JPEG).</li>
+      <li>No authentication on <code>/control</code>, <code>/joystick</code> or
+        <code>/status</code>: anyone on the AP can drive the car, and every command is a
+        <code>GET</code>, so a bare <code>&lt;img src&gt;</code> on any page open in a
+        connected browser is enough. The default AP password
+        (<code>88888888</code>) is also weak.</li>
+      <li><code>Access-Control-Allow-Origin: *</code> on the control endpoints. The
+        stream now sets it deliberately, so that the control page's canvas can read
+        frames; the control endpoints do not need it.</li>
+      <li><code>maxconnection = 1</code> means a second device cannot connect at all, and
+        an unclean disconnect can hold the slot until the AP times it out.</li>
+    </ul>
+    <p><strong>Architecture and performance:</strong></p>
+    <ul>
+      <li>The older vision loops still poll <code>/capture</code> while the MJPEG stream
+        runs on port&nbsp;81, so two tasks call <code>esp_camera_fb_get()</code> on one
+        sensor. Follow-me and Classic CV avoid this by reading the stream directly;
+        the remaining loops have not been migrated.</li>
+      <li>Autonomy is bounded by loop latency, not by the control law. The full
+        camera&nbsp;&rarr;&nbsp;JPEG&nbsp;&rarr;&nbsp;WiFi&nbsp;&rarr;&nbsp;browser&nbsp;&rarr;&nbsp;HTTP&nbsp;&rarr;&nbsp;I2C
+        round trip is on the order of a few hundred milliseconds; a real line follower
+        uses reflectance sensors at 100+&nbsp;Hz. The physics, not the code, is the
+        ceiling.</li>
+      <li>Tesseract.js (Plates) loads its worker and language data from inside a Web
+        Worker, which has its own <code>fetch</code> the offline cache cannot intercept.
+        It remains internet-only.</li>
+      <li>The control page is ~1,900 lines of HTML/CSS/JS inside a C string literal,
+        duplicated across two source trees kept in sync by hand. Generating
+        <code>index_html.h</code> from a real <code>.html</code> file at build time would
+        remove both problems.</li>
+      <li><code>preview_full.png</code> is 2.1&nbsp;MB and in git history permanently.</li>
     </ul>
   </div>
 
