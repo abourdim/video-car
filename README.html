@@ -48,6 +48,12 @@
     font-size:11.5px;color:var(--muted);}
   .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cyan);
     box-shadow:0 0 6px var(--cyan);margin-right:6px;}
+  #lang-switch{display:flex;gap:4px;margin-top:16px;}
+  .lang-btn{background:var(--panel);border:1px solid var(--border);
+    display:flex;align-items:center;padding:3px;border-radius:5px;cursor:pointer;
+    opacity:.55;line-height:0;}
+  .lang-btn.active{border-color:var(--amber);opacity:1;box-shadow:0 0 0 1px var(--amber);}
+  .lang-btn svg{display:block;border-radius:2px;}
 </style>
 </head>
 <body>
@@ -55,7 +61,12 @@
 
   <header>
     <h1>&#128663; VIDEO<span>CAR</span></h1>
-    <p class="tagline">Enhanced firmware + web control page for the keyestudio ESP32-CAM
+    <div id="lang-switch">
+      <button class="lang-btn active" data-lang="en" title="English" aria-label="English" onclick="setLang('en')"><svg width="22" height="15" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="6.5"/><path d="M0 0L60 40M60 0L0 40" stroke="#C8102E" stroke-width="3.5"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="11"/><path d="M30 0V40M0 20H60" stroke="#C8102E" stroke-width="6.5"/></svg></button>
+      <button class="lang-btn" data-lang="fr" title="Français" aria-label="Français" onclick="setLang('fr')"><svg width="22" height="15" viewBox="0 0 60 40"><rect width="20" height="40" fill="#002395"/><rect x="20" width="20" height="40" fill="#fff"/><rect x="40" width="20" height="40" fill="#ED2939"/></svg></button>
+      <button class="lang-btn" data-lang="ar" title="العربية" aria-label="العربية" onclick="setLang('ar')"><svg width="22" height="15" viewBox="0 0 900 600"><defs><clipPath id="glVC2"><rect width="450" height="600"/></clipPath></defs><rect width="450" height="600" fill="#006233"/><rect x="450" width="450" height="600" fill="#FFF"/><g fill="#D21034" transform="translate(450,300)"><circle r="125"/><circle cx="25" r="100" fill="#FFF"/><g clip-path="url(#glVC2)" transform="translate(-450,-300)"><circle cx="475" cy="300" r="100" fill="#006233"/></g><path d="M85-12l22 67h71l-57 42 22 67-58-42-57 42 21-67-57-42h71z"/></g></svg></button>
+    </div>
+    <p class="tagline" data-i18n="tagline">Enhanced firmware + web control page for the keyestudio ESP32-CAM
     Video Smart Car. Built on top of keyestudio's stock sketch, with a virtual joystick,
     connection-loss failsafe, snapshot/video capture, a redesigned control UI, and a
     PlatformIO build system alongside the original Arduino IDE sketch.</p>
@@ -68,23 +79,23 @@ cd video-car</code></pre>
     <img class="hero" src="preview_full.png" alt="Control page screenshot">
   </header>
 
-  <h2><span class="dot"></span>Quick start</h2>
+  <h2><span class="dot"></span><span data-i18n="h_quickstart">Quick start</span></h2>
   <div class="panel">
-    <p><strong>Arduino IDE</strong> (known-good baseline): open
+    <p data-i18n="qs_p1"><strong>Arduino IDE</strong> (known-good baseline): open
     <code>Codes/4_VideoCar/4_VideoCar.ino</code>, select your <code>esp32</code> board
     package version under <code>Tools &gt; Board &gt; Boards Manager</code>, enable
     <code>Tools &gt; PSRAM: Enabled</code>, select the AI-Thinker ESP32-CAM board, and
     flash as usual.</p>
-    <p><strong>PlatformIO</strong>:</p>
+    <p data-i18n="qs_p2"><strong>PlatformIO</strong>:</p>
     <pre><code>./launch.sh</code></pre>
-    <p>Walks you through checking/installing PlatformIO, building, flashing, and opening
+    <p data-i18n="qs_p3">Walks you through checking/installing PlatformIO, building, flashing, and opening
     a serial monitor. See <a href="#build-systems">Build systems</a> below for what each
     menu option does.</p>
-    <p>Once flashed, connect to the <code>keyes1</code> WiFi network (password
+    <p data-i18n="qs_p4">Once flashed, connect to the <code>keyes1</code> WiFi network (password
     <code>88888888</code>) and open <code>http://192.168.4.1</code> in a browser.</p>
 
     <div class="note">
-      <p><strong>&#128218; New to this, or want to drive the car from your own scripts?</strong>
+      <p data-i18n="qs_note1"><strong>&#128218; New to this, or want to drive the car from your own scripts?</strong>
       <a href="ports.html">ports.html</a> is a step-by-step guide to both servers &mdash; what
       port 80 and port 81 each do, why there are two of them, every endpoint with its value
       ranges, and the 500ms failsafe that catches everyone out the first time they try to
@@ -92,71 +103,71 @@ cd video-car</code></pre>
     </div>
 
     <div class="note">
-      <p><strong>&#9888; The Vision features need internet &mdash; the default AP mode
+      <p data-i18n="qs_note2_t"><strong>&#9888; The Vision features need internet &mdash; the default AP mode
       has none.</strong></p>
-      <p>Out of the box (<code>ap = 1</code>) the car hosts its own isolated
+      <p data-i18n="qs_note2_p1">Out of the box (<code>ap = 1</code>) the car hosts its own isolated
       <code>keyes1</code> network, which isn't connected to anything. <strong>Pose, Hand
       tracking, Facial expression, Plates, AI Vision, and the jsQR fallback all download
       their models from a CDN the first time you enable them, so on the car's own AP they
       will fail to start.</strong> Driving, the video stream, snapshots, and recording all
       work fine there &mdash; it's only the model-backed overlays that don't.</p>
-      <p>To use them, set <code>ap = 0</code> near the top of
+      <p data-i18n="qs_note2_p2">To use them, set <code>ap = 0</code> near the top of
       <code>4_VideoCar.ino</code> along with your router's <code>ssid</code>/<code>password</code>,
       reflash, and read the car's IP off the serial monitor. Your phone or laptop then has
       the car and the internet at the same time.</p>
-      <p>The one exception is <strong>QR / Barcode</strong> on Chrome, Edge, or Android
+      <p data-i18n="qs_note2_p3">The one exception is <strong>QR / Barcode</strong> on Chrome, Edge, or Android
       Chrome, which uses the browser's built-in <code>BarcodeDetector</code> and needs no
       network at all &mdash; that one works on the car's own AP.</p>
     </div>
   </div>
 
-  <h2><span class="dot"></span>Features vs. the stock keyestudio sketch</h2>
+  <h2><span class="dot"></span><span data-i18n="h_features">Features vs. the stock keyestudio sketch</span></h2>
   <div class="panel">
     <ul>
-      <li><strong>Joystick control</strong> &mdash; draggable on-screen joystick
+      <li data-i18n="feat_joystick"><strong>Joystick control</strong> &mdash; draggable on-screen joystick
         (<code>/joystick?x=&amp;y=</code>), arcade-mixed to per-wheel PWM, alongside the
         original D-pad/keyboard controls.</li>
-      <li><strong>Connection-loss failsafe</strong> &mdash; the car auto-stops if no
+      <li data-i18n="feat_failsafe"><strong>Connection-loss failsafe</strong> &mdash; the car auto-stops if no
         command is received for 500ms (WiFi drop, phone locked, tab closed, etc.),
         instead of driving on unattended. WiFi auto-reconnect in station mode, MJPEG
         stream auto-recovery, and a live connection indicator.</li>
-      <li><strong>Settings persistence</strong> &mdash; Speed, Trim, Lights, Quality,
+      <li data-i18n="feat_settings"><strong>Settings persistence</strong> &mdash; Speed, Trim, Lights, Quality,
         Resolution, Flip, and Mirror are all remembered two ways: on the car itself
         (NVS flash, survives reboots/reflashes, same for any device that connects) and
         in the browser's <code>localStorage</code> (instant restore on reload). On page
         load the device's own values always win if they differ from the local cache.</li>
-      <li><strong>Live flip/mirror toggles</strong> &mdash; Flip and Mirror buttons in the
+      <li data-i18n="feat_flip"><strong>Live flip/mirror toggles</strong> &mdash; Flip and Mirror buttons in the
         Systems panel call the sensor's <code>set_vflip</code>/<code>set_hmirror</code>
         live, so you can fix the camera's orientation for your chassis without
         reflashing.</li>
-      <li><strong>Pose detection</strong> &mdash; MoveNet skeleton tracking (light blue),
+      <li data-i18n="feat_pose"><strong>Pose detection</strong> &mdash; MoveNet skeleton tracking (light blue),
         dots + limb lines over up to a few people at once.</li>
-      <li><strong>Hand tracking</strong> &mdash; MediaPipe Hands via TF.js's
+      <li data-i18n="feat_hands"><strong>Hand tracking</strong> &mdash; MediaPipe Hands via TF.js's
         <code>tfjs</code> runtime (avoids a separate MediaPipe script/wasm bundle from
         yet another host), 21 keypoints per hand plus left/right handedness (orange).</li>
-      <li><strong>Facial expression</strong> &mdash; happy/sad/angry/surprised/etc. via
+      <li data-i18n="feat_expr"><strong>Facial expression</strong> &mdash; happy/sad/angry/surprised/etc. via
         <code>@vladmandic/face-api</code> (an actively-maintained fork of the long-dormant
         face-api.js), whose model weights are published in the same npm package as the
         script &mdash; unlike most of Vision, this only depends on a single host
         (jsdelivr) rather than two.</li>
-      <li><strong>QR / Barcode</strong> &mdash; uses the browser's built-in
+      <li data-i18n="feat_codes"><strong>QR / Barcode</strong> &mdash; uses the browser's built-in
         <code>BarcodeDetector</code> when available (Chrome/Edge/Android Chrome) &mdash;
         no network needed at all, works even on the car's own isolated AP. Falls back to
         the jsQR library (QR codes only, needs internet once) on browsers without native
         support (Safari/iOS).</li>
-      <li><strong>Plates</strong> &mdash; an experimental license-plate reader. There's no
+      <li data-i18n="feat_plates"><strong>Plates</strong> &mdash; an experimental license-plate reader. There's no
         ready-made plate-detector model like there is for objects/faces, so this reuses
         COCO-SSD's car/truck/bus boxes, crops the likely plate region, and runs real OCR
         (Tesseract.js) on it. Heuristic, not a trained detector, and limited by the
         camera's 320&times;240 resolution &mdash; works best close, square-on, and
         well-lit. Runs on its own slower ~2.5s cadence since OCR is much heavier than
         object/face detection.</li>
-      <li><strong>AI Vision</strong> &mdash; a toggleable live overlay detecting both
+      <li data-i18n="feat_vision"><strong>AI Vision</strong> &mdash; a toggleable live overlay detecting both
         objects (COCO-SSD) and faces (BlazeFace) right over the viewfinder, running
         entirely in the browser since the ESP32 can't run a neural net alongside
         everything else. Needs internet access on the network the device is using to
         load the models the first time.</li>
-      <li><strong>Build stamp</strong> &mdash; the control page footer, <code>/status</code>
+      <li data-i18n="feat_buildstamp"><strong>Build stamp</strong> &mdash; the control page footer, <code>/status</code>
         and the serial console at boot all report the firmware version, the compiler's
         build timestamp, and the git revision it came from (with a <code>-dirty</code>
         suffix, shown in amber, when the tree had uncommitted changes). Previously there
@@ -165,7 +176,7 @@ cd video-car</code></pre>
         so builds from there report <code>nogit</code> rather than a possibly-stale hash.
         The page is also served <code>Cache-Control: no-store</code>, so a browser can't
         pair a cached page with newer firmware.</li>
-      <li><strong>Classic CV (no models, no internet)</strong> &mdash; three features
+      <li data-i18n="feat_classiccv"><strong>Classic CV (no models, no internet)</strong> &mdash; three features
         that work on the car's own AP with nothing downloaded, because they're plain pixel
         maths rather than a neural net. They also run at full frame rate instead of the
         0.4&ndash;2.5Hz a model manages on a phone, which is what makes the driving ones
@@ -192,7 +203,7 @@ cd video-car</code></pre>
         rules: manual input always wins, only one autonomous mode runs at a time, and a
         lost target stops the car and then disarms. Motion is passive, so it keeps running
         alongside whatever else is steering.</li>
-      <li><strong>Offline model cache</strong> &mdash; the Vision features load scripts
+      <li data-i18n="feat_offline"><strong>Offline model cache</strong> &mdash; the Vision features load scripts
         from a CDN and model weights from Google's model hosting, neither of which the
         car's own AP can reach. Fetches to those hosts are now cached in IndexedDB and
         read back transparently, so turning a feature on once somewhere with internet
@@ -202,7 +213,7 @@ cd video-car</code></pre>
         both unavailable &mdash; they require a secure context, and this page is plain
         HTTP. Tesseract.js, used by Plates, loads from inside a Web Worker and isn't
         covered.)</li>
-      <li><strong>Follow-me (autonomous)</strong> &mdash; the one feature here that
+      <li data-i18n="feat_followme"><strong>Follow-me (autonomous)</strong> &mdash; the one feature here that
         actually drives the car. It takes COCO-SSD's bounding box for a chosen target
         (person, ball, dog, cat, bottle, chair) and runs a proportional controller on it:
         horizontal offset from frame centre becomes steering, box height becomes throttle,
@@ -215,23 +226,23 @@ cd video-car</code></pre>
         there's no rear sensor), and losing the target stops the car and then disarms
         rather than sending it hunting. Needs internet once to load the model.
         <strong>Give the car clear floor space before arming it.</strong></li>
-      <li><strong>Snapshot &amp; video recording</strong> &mdash; a Capture panel
+      <li data-i18n="feat_capture"><strong>Snapshot &amp; video recording</strong> &mdash; a Capture panel
         downloads a still JPEG, or records a <code>.webm</code>/<code>.mp4</code>
         client-side (Canvas + MediaRecorder pulling frames from <code>/capture</code>)
         since the ESP32 itself can't encode video or write to an SD card in this
         sketch.</li>
-      <li><strong>Redesigned control page</strong> &mdash; dark mission-control /
+      <li data-i18n="feat_redesign"><strong>Redesigned control page</strong> &mdash; dark mission-control /
         camera-viewfinder HUD theme, grouped panels, live slider value readouts,
         responsive layout.</li>
-      <li><strong>Camera init resilience</strong> &mdash; retries at a lower XCLK before
+      <li data-i18n="feat_camresilience"><strong>Camera init resilience</strong> &mdash; retries at a lower XCLK before
         giving up, blinks a visible LED error pattern instead of silently failing, and
         enables the brownout-detector workaround that shipped commented out in the
         original sketch.</li>
     </ul>
-    <p>Full change-by-change writeup: <a href="report.html">report.html</a>.</p>
+    <p data-i18n="feat_more"><span>Full change-by-change writeup:</span> <a href="report.html">report.html</a>.</p>
   </div>
 
-  <h2><span class="dot"></span>Repository layout</h2>
+  <h2><span class="dot"></span><span data-i18n="h_repolayout">Repository layout</span></h2>
   <div class="panel">
     <pre><code>Codes/                  Original Arduino-IDE-style sketch layout (all 4 sketches)
   4_VideoCar/            The enhanced sketch -- flash this one from Arduino IDE
@@ -245,7 +256,7 @@ README.html               This file
 ports.html                Beginner's step-by-step guide to the port 80 / port 81 servers
 report.html               Detailed change report -- what changed, why, and what's still open
 README.html               This document</code></pre>
-    <p><code>Codes/4_VideoCar</code> and <code>firmware/4_videocar/src</code> are kept in
+    <p data-i18n="repo_sync"><code>Codes/4_VideoCar</code> and <code>firmware/4_videocar/src</code> are kept in
     sync &mdash; same source, two build systems. If you edit one, mirror the change into
     the other. The other three sketches (<code>1_blink</code>, <code>2_breathing_light</code>,
     <code>3_motor</code>) only exist as Arduino sketches under <code>Codes/</code> and as
@@ -253,28 +264,28 @@ README.html               This document</code></pre>
     to those, they're simple demos included for a complete workshop package.</p>
   </div>
 
-  <h2 id="build-systems"><span class="dot"></span>Build systems</h2>
+  <h2 id="build-systems"><span class="dot"></span><span data-i18n="h_buildsystems">Build systems</span></h2>
 
   <div class="panel">
-    <h3>PlatformIO (firmware/)</h3>
-    <p>Each sketch is its own PlatformIO project under <code>firmware/&lt;name&gt;/</code>,
+    <h3 data-i18n="h3_pio">PlatformIO (firmware/)</h3>
+    <p data-i18n="pio_p1">Each sketch is its own PlatformIO project under <code>firmware/&lt;name&gt;/</code>,
     all targeting <code>env:esp32cam</code> (AI-Thinker pinout) since it's the same
     physical board for all four:</p>
     <table>
-      <tr><th>App</th><th>Notes</th></tr>
-      <tr><td class="mono"><code>1_blink</code></td><td>Trivial LED blink, no special config needed.</td></tr>
-      <tr><td class="mono"><code>2_breathing_light</code></td><td>PWM LED fade, no special config needed.</td></tr>
-      <tr><td class="mono"><code>3_motor</code></td><td>Drives forward/back/left/right immediately on boot/reset &mdash; <strong>give the car room to move</strong> before flashing or resetting it.</td></tr>
-      <tr><td class="mono"><code>4_videocar</code></td><td>The main project &mdash; see the table below for why its <code>platformio.ini</code> has extra settings the other three don't need.</td></tr>
+      <tr><th data-i18n="th_app">App</th><th data-i18n="th_notes">Notes</th></tr>
+      <tr><td class="mono"><code>1_blink</code></td><td data-i18n="app_blink">Trivial LED blink, no special config needed.</td></tr>
+      <tr><td class="mono"><code>2_breathing_light</code></td><td data-i18n="app_breathing">PWM LED fade, no special config needed.</td></tr>
+      <tr><td class="mono"><code>3_motor</code></td><td data-i18n="app_motor">Drives forward/back/left/right immediately on boot/reset &mdash; <strong>give the car room to move</strong> before flashing or resetting it.</td></tr>
+      <tr><td class="mono"><code>4_videocar</code></td><td data-i18n="app_videocar">The main project &mdash; see the table below for why its <code>platformio.ini</code> has extra settings the other three don't need.</td></tr>
     </table>
 
     <p style="margin-top:18px;"><code>firmware/4_videocar/platformio.ini</code>:</p>
     <table>
-      <tr><th>Setting</th><th>Value</th><th>Why</th></tr>
+      <tr><th data-i18n="th_setting">Setting</th><th data-i18n="th_value">Value</th><th data-i18n="th_why">Why</th></tr>
       <tr>
         <td><code>platform</code></td>
         <td><code>espressif32@6.5.0</code></td>
-        <td>Pinned, not left on "latest" &mdash; an unpinned platform can silently pull a
+        <td data-i18n="ini_platform">Pinned, not left on "latest" &mdash; an unpinned platform can silently pull a
         different <code>esp32-camera</code> driver version than what Arduino IDE has
         installed, which changes camera sensor-probe behavior. <code>6.5.0</code>
         (arduino-esp32 2.0.14) is the version this project is confirmed working against.
@@ -284,13 +295,13 @@ README.html               This document</code></pre>
       <tr>
         <td><code>board_build.partitions</code></td>
         <td><code>huge_app.csv</code></td>
-        <td>The camera+WiFi+webserver binary doesn't fit the default partition table.
+        <td data-i18n="ini_partitions">The camera+WiFi+webserver binary doesn't fit the default partition table.
         Same as picking "Huge APP (3MB No OTA/1MB SPIFFS)" in Arduino IDE.</td>
       </tr>
       <tr>
         <td><code>build_flags</code></td>
         <td><code>-DBOARD_HAS_PSRAM</code>,<br><code>-mfix-esp32-psram-cache-issue</code></td>
-        <td>Arduino IDE's <code>Tools &gt; PSRAM: Enabled</code> menu sets these behind
+        <td data-i18n="ini_buildflags">Arduino IDE's <code>Tools &gt; PSRAM: Enabled</code> menu sets these behind
         the scenes; PlatformIO's generic <code>esp32cam</code> board definition does not,
         even though the board has PSRAM. <strong>This was the actual root cause of
         "works in Arduino IDE, camera fails in PlatformIO" (<code>Camera init failed
@@ -299,42 +310,42 @@ README.html               This document</code></pre>
       <tr>
         <td><code>upload_speed</code></td>
         <td><code>460800</code></td>
-        <td>Safer default than 921600 for boards flashed through a bare FTDI adapter
+        <td data-i18n="ini_uploadspeed">Safer default than 921600 for boards flashed through a bare FTDI adapter
         with no auto-reset circuit.</td>
       </tr>
     </table>
 
-    <p style="margin-top:18px;"><code>launch.sh</code> menu:</p>
-    <pre><code>0) Select app               5) Build + Flash + Monitor
+    <p style="margin-top:18px;"><code>launch.sh</code> <span data-i18n="menu_label">menu</span>:</p>
+    <pre><code data-i18n="launch_menu">0) Select app               5) Build + Flash + Monitor
 1) Check installation       6) Serial monitor
 2) Install PlatformIO       7) List serial ports
 3) Build firmware           8) Clean build
 4) Flash firmware</code></pre>
-    <p>It prompts for which app to work with on startup (auto-discovers any
+    <p data-i18n="launch_p"><span>It prompts for which app to work with on startup (auto-discovers any</span>
     <code>firmware/&lt;name&gt;/platformio.ini</code>), and option 0 switches apps at any
     time without restarting the script. Option 4 (Flash) prints the IO0/BOOT-button
     reminder most bare ESP32-CAM programmers need: hold IO0, tap RESET, release IO0 once
     "Connecting...." is actively retrying &mdash; and an extra warning for
     <code>3_motor</code> about giving the car room to move.</p>
-    <div class="note">If you change a <code>platformio.ini</code> (e.g. re-pinning the
+    <div class="note" data-i18n="clean_note">If you change a <code>platformio.ini</code> (e.g. re-pinning the
     platform version), run option 8 (Clean) before rebuilding so a stale
     <code>.pio/</code> cache doesn't mask the change.</div>
 
-    <h3>Arduino IDE (Codes/4_VideoCar/)</h3>
-    <p>Standard Arduino IDE flow. Make sure <code>Tools &gt; PSRAM</code> is set to
+    <h3 data-i18n="h3_arduino">Arduino IDE (Codes/4_VideoCar/)</h3>
+    <p data-i18n="arduino_p">Standard Arduino IDE flow. Make sure <code>Tools &gt; PSRAM</code> is set to
     <code>Enabled</code> and <code>Tools &gt; Partition Scheme</code> is set to a scheme
     with enough app space (e.g. "Huge APP (3MB No OTA/1MB SPIFFS)").</p>
   </div>
 
-  <h2 id="troubleshooting"><span class="dot"></span>Troubleshooting</h2>
+  <h2 id="troubleshooting"><span class="dot"></span><span data-i18n="h_troubleshooting">Troubleshooting</span></h2>
   <div class="panel">
-    <p>See also the official tutorial's own
+    <p data-i18n="ts_intro"><span>See also the official tutorial's own</span>
     <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html#common-problems" target="_blank" rel="noopener">Common Problems</a>
     section (wrong board selection, IP/WiFi connection issues, battery/charging) for
     issues unrelated to this repo's changes.</p>
 
-    <h3>Camera init failed with error 0x106 (only under PlatformIO, works fine in Arduino IDE)</h3>
-    <p>This is <code>ESP_ERR_NOT_SUPPORTED</code> from the camera sensor probe. If the
+    <h3 data-i18n="ts_h1">Camera init failed with error 0x106 (only under PlatformIO, works fine in Arduino IDE)</h3>
+    <p data-i18n="ts_p1">This is <code>ESP_ERR_NOT_SUPPORTED</code> from the camera sensor probe. If the
     same board works in Arduino IDE, it's a toolchain/build-flag mismatch, not hardware
     &mdash; see the PSRAM/platform-pinning notes above. This project's
     <code>platformio.ini</code> is already configured to avoid it; if you still hit it,
@@ -344,28 +355,28 @@ README.html               This document</code></pre>
     PlatformIO platform version &mdash; if it's wildly different, re-pin
     <code>platform = espressif32@X.Y.Z</code> to match.</p>
 
-    <h3>Repeated resets right after a camera error</h3>
-    <p>Usually a marginal power supply &mdash; camera + WiFi init draws a current spike
+    <h3 data-i18n="ts_h2">Repeated resets right after a camera error</h3>
+    <p data-i18n="ts_p2">Usually a marginal power supply &mdash; camera + WiFi init draws a current spike
     many FTDI adapters can't supply cleanly. Use a proper 5V/2A source. The sketch
     already enables the brownout-detector workaround, which will surface this as a clean
     retry/error message instead of a silent reboot loop, but it doesn't fix underlying
     undervoltage.</p>
 
-    <h3>Car doesn't stop when you close the browser tab / lose WiFi</h3>
-    <p>Shouldn't happen &mdash; the firmware failsafe stops the motors after 500ms
+    <h3 data-i18n="ts_h3">Car doesn't stop when you close the browser tab / lose WiFi</h3>
+    <p data-i18n="ts_p3">Shouldn't happen &mdash; the firmware failsafe stops the motors after 500ms
     without a command. If you're seeing otherwise, check the build stamp in the control page
     footer &mdash; if it reads <code>nogit</code> or an unexpected commit, you may be
     running stock keyestudio firmware, which has no such failsafe.</p>
 
-    <h3>A Vision feature says it can't load, on the car's own WiFi</h3>
-    <p>Expected the first time. The models come from a CDN and the car's AP has no
+    <h3 data-i18n="ts_h4">A Vision feature says it can't load, on the car's own WiFi</h3>
+    <p data-i18n="ts_p4">Expected the first time. The models come from a CDN and the car's AP has no
     internet. Join a router, turn the feature on once so its files land in the offline
     cache (the Offline panel shows the count and size), then go back to the car's AP
     &mdash; it'll work from then on. Plates is the exception: Tesseract.js loads from
     inside a Web Worker the cache can't intercept, so it stays internet-only.</p>
 
-    <h3>The video feed dies when a Vision or autonomy feature starts</h3>
-    <p>The stream is fetched with <code>crossorigin="anonymous"</code> so the page can
+    <h3 data-i18n="ts_h5">The video feed dies when a Vision or autonomy feature starts</h3>
+    <p data-i18n="ts_p5">The stream is fetched with <code>crossorigin="anonymous"</code> so the page can
     read frames from it, which requires the CORS header the firmware sets on port 81. If
     those ever disagree the browser refuses the image outright. The page detects this and
     reconnects without CORS after two failures, falling back to <code>/capture</code>
@@ -373,43 +384,213 @@ README.html               This document</code></pre>
     compare the commit in the footer's build stamp against <code>git log --oneline</code>
     and reflash if they disagree.</p>
 
-    <h3>Line follower doesn't move at all</h3>
-    <p>Put the Speed slider at maximum. It multiplies with the mode's own cap, and
+    <h3 data-i18n="ts_h6">Line follower doesn't move at all</h3>
+    <p data-i18n="ts_p6">Put the Speed slider at maximum. It multiplies with the mode's own cap, and
     <code>LINE_SPEED</code> is deliberately low (26), so a reduced slider can leave the
     motors below their stiction floor. If it still won't move, raise
     <code>LINE_SPEED</code> in <code>app_server.h</code>.</p>
 
-    <h3>Line follower weaves or loses the line</h3>
-    <p>Lower <code>LINE_KP</code>, don't raise it. The loop is limited by round-trip
+    <h3 data-i18n="ts_h7">Line follower weaves or loses the line</h3>
+    <p data-i18n="ts_p7">Lower <code>LINE_KP</code>, don't raise it. The loop is limited by round-trip
     latency rather than by gain, and more gain makes a delay-dominated loop worse. If it
     misses corners instead, raise <code>LINE_TURN_CUT</code> so it slows more while
     steering. If it reports &ldquo;looking for a line&rdquo; over a real line, the
     contrast is too low &mdash; use wider, darker tape before touching
     <code>LINE_MIN_CONTRAST</code>.</p>
 
-    <h3>An autonomous mode won't stay armed</h3>
-    <p>Any manual input disarms it by design, as does hiding the browser tab, and losing
+    <h3 data-i18n="ts_h8">An autonomous mode won't stay armed</h3>
+    <p data-i18n="ts_p8">Any manual input disarms it by design, as does hiding the browser tab, and losing
     the target stops the car after 0.7s and disarms after 3s. All three are
     intentional.</p>
 
-    <h3>No authentication on the control endpoints</h3>
-    <p>Known, unaddressed limitation carried over from the original sketch &mdash; see
+    <h3 data-i18n="ts_h9">No authentication on the control endpoints</h3>
+    <p data-i18n="ts_p9"><span>Known, unaddressed limitation carried over from the original sketch &mdash; see</span>
     <a href="report.html">report.html</a> for details. Anyone on the <code>keyes1</code>
     WiFi network (default password <code>88888888</code>) can drive the car.</p>
   </div>
 
-  <h2><span class="dot"></span>Git history</h2>
+  <h2><span class="dot"></span><span data-i18n="h_githistory">Git history</span></h2>
   <div class="panel">
     <pre><code>git log --oneline</code></pre>
-    <p>Each commit is a self-contained feature/fix; <code>git log -p</code> gives the
+    <p data-i18n="git_p">Each commit is a self-contained feature/fix; <code>git log -p</code> gives the
     full line-by-line diff against the original keyestudio sketch at any point.</p>
   </div>
 
-  <footer>
+  <footer data-i18n="footer_note">
     Rendered from <code>README.md</code> at the repo root &mdash; that file is the
     source of truth; this is a formatted copy for easier reading in a browser.
   </footer>
 
 </div>
+<script>
+(function(){
+  var I18N = {
+    fr: {
+      tagline: "Firmware amélioré + page de contrôle web pour la keyestudio ESP32-CAM Video Smart Car. Construit sur la base du sketch d'origine, avec un joystick virtuel, un dispositif de sécurité en cas de perte de connexion, capture photo/vidéo, une interface de contrôle repensée, et un système de build PlatformIO en plus du sketch Arduino IDE d'origine.",
+      h_quickstart: "Démarrage rapide",
+      qs_p1: "<strong>Arduino IDE</strong> (base de référence fiable) : ouvrez <code>Codes/4_VideoCar/4_VideoCar.ino</code>, sélectionnez votre version du paquet de la carte <code>esp32</code> dans <code>Tools &gt; Board &gt; Boards Manager</code>, activez <code>Tools &gt; PSRAM: Enabled</code>, sélectionnez la carte AI-Thinker ESP32-CAM, puis flashez normalement.",
+      qs_p2: "<strong>PlatformIO</strong> :",
+      qs_p3: "Vous guide dans la vérification/installation de PlatformIO, la compilation, le flashage et l'ouverture d'un moniteur série. Voir <a href=\"#build-systems\">Systèmes de build</a> ci-dessous pour le détail de chaque option du menu.",
+      qs_p4: "Une fois flashé, connectez-vous au réseau WiFi <code>keyes1</code> (mot de passe <code>88888888</code>) et ouvrez <code>http://192.168.4.1</code> dans un navigateur.",
+      qs_note1: "<strong>&#128218; Nouveau ici, ou vous voulez piloter la voiture depuis vos propres scripts ?</strong> <a href=\"ports.html\">ports.html</a> est un guide pas à pas des deux serveurs &mdash; ce que font les ports 80 et 81, pourquoi il y en a deux, chaque endpoint avec ses plages de valeurs, et le failsafe de 500ms qui surprend tout le monde la première fois qu'on essaie de piloter la voiture avec <code>curl</code>.",
+      qs_note2_t: "<strong>&#9888; Les fonctions Vision ont besoin d'internet &mdash; le mode point d'accès par défaut n'en a pas.</strong>",
+      qs_note2_p1: "Par défaut (<code>ap = 1</code>) la voiture héberge son propre réseau isolé <code>keyes1</code>, qui n'est connecté à rien. <strong>Pose, suivi des mains, expression faciale, plaques, AI Vision, et le repli jsQR téléchargent tous leurs modèles depuis un CDN la première fois qu'on les active, donc sur le point d'accès de la voiture ils échoueront au démarrage.</strong> La conduite, le flux vidéo, les captures et l'enregistrement fonctionnent bien là-dessus &mdash; seules les superpositions basées sur des modèles ne fonctionnent pas.",
+      qs_note2_p2: "Pour les utiliser, réglez <code>ap = 0</code> en haut de <code>4_VideoCar.ino</code> avec le <code>ssid</code>/<code>password</code> de votre routeur, reflashez, et relevez l'IP de la voiture sur le moniteur série. Votre téléphone ou ordinateur a alors accès à la voiture et à internet en même temps.",
+      qs_note2_p3: "La seule exception est <strong>QR / Code-barres</strong> sur Chrome, Edge, ou Android Chrome, qui utilise le <code>BarcodeDetector</code> intégré au navigateur et n'a besoin d'aucun réseau &mdash; celui-là fonctionne sur le point d'accès propre à la voiture.",
+      h_features: "Fonctionnalités par rapport au sketch keyestudio d'origine",
+      feat_joystick: "<strong>Contrôle par joystick</strong> &mdash; joystick virtuel déplaçable à l'écran (<code>/joystick?x=&amp;y=</code>), mixé en mode arcade vers un PWM par roue, en plus des contrôles D-pad/clavier d'origine.",
+      feat_failsafe: "<strong>Sécurité de perte de connexion</strong> &mdash; la voiture s'arrête automatiquement si aucune commande n'est reçue pendant 500ms (coupure WiFi, téléphone verrouillé, onglet fermé, etc.), au lieu de continuer sans surveillance. Reconnexion WiFi automatique en mode station, récupération automatique du flux MJPEG, et indicateur de connexion en direct.",
+      feat_settings: "<strong>Persistance des réglages</strong> &mdash; Vitesse, Trim, Lumières, Qualité, Résolution, Flip et Miroir sont tous mémorisés de deux façons : sur la voiture elle-même (flash NVS, survit aux redémarrages/reflashages, identique pour tout appareil qui se connecte) et dans le <code>localStorage</code> du navigateur (restauration instantanée au rechargement). Au chargement de la page, les valeurs de l'appareil ont toujours priorité si elles diffèrent du cache local.",
+      feat_flip: "<strong>Bascules flip/miroir en direct</strong> &mdash; les boutons Flip et Mirror du panneau Systèmes appellent <code>set_vflip</code>/<code>set_hmirror</code> du capteur en direct, permettant de corriger l'orientation de la caméra pour votre châssis sans reflasher.",
+      feat_pose: "<strong>Détection de pose</strong> &mdash; suivi de squelette MoveNet (bleu clair), points + lignes de membres sur plusieurs personnes à la fois.",
+      feat_hands: "<strong>Suivi des mains</strong> &mdash; MediaPipe Hands via le runtime <code>tfjs</code> de TF.js (évite un bundle MediaPipe script/wasm séparé depuis un autre hôte), 21 points-clés par main plus la latéralité gauche/droite (orange).",
+      feat_expr: "<strong>Expression faciale</strong> &mdash; heureux/triste/en colère/surpris/etc. via <code>@vladmandic/face-api</code> (un fork activement maintenu du désormais dormant face-api.js), dont les poids du modèle sont publiés dans le même paquet npm que le script &mdash; contrairement au reste de Vision, cela ne dépend que d'un seul hôte (jsdelivr) au lieu de deux.",
+      feat_codes: "<strong>QR / Code-barres</strong> &mdash; utilise le <code>BarcodeDetector</code> intégré au navigateur quand disponible (Chrome/Edge/Android Chrome) &mdash; aucun réseau nécessaire, fonctionne même sur le point d'accès isolé de la voiture. Se replie sur la bibliothèque jsQR (codes QR uniquement, internet nécessaire une fois) sur les navigateurs sans support natif (Safari/iOS).",
+      feat_plates: "<strong>Plaques</strong> &mdash; un lecteur de plaques d'immatriculation expérimental. Il n'existe pas de modèle de détection de plaques prêt à l'emploi comme pour les objets/visages, donc ceci réutilise les boîtes voiture/camion/bus de COCO-SSD, recadre la zone probable de la plaque, et fait tourner une vraie OCR (Tesseract.js) dessus. Heuristique, pas un détecteur entraîné, et limité par la résolution 320&times;240 de la caméra &mdash; fonctionne mieux de près, bien de face, et bien éclairé. Tourne à sa propre cadence plus lente (~2,5s) car l'OCR est bien plus lourde que la détection d'objets/visages.",
+      feat_vision: "<strong>AI Vision</strong> &mdash; une superposition en direct activable détectant à la fois des objets (COCO-SSD) et des visages (BlazeFace) directement sur le viseur, tournant entièrement dans le navigateur puisque l'ESP32 ne peut pas exécuter un réseau de neurones en plus du reste. Nécessite un accès internet sur le réseau utilisé par l'appareil pour charger les modèles la première fois.",
+      feat_buildstamp: "<strong>Empreinte de build</strong> &mdash; le pied de page de la page de contrôle, <code>/status</code> et la console série au démarrage rapportent tous la version du firmware, l'horodatage de compilation, et la révision git dont elle provient (avec un suffixe <code>-dirty</code>, affiché en ambre, quand l'arbre avait des modifications non commitées). Auparavant, il n'y avait aucun moyen de savoir ce qui tournait réellement sur une voiture sans la reflasher. La révision est estampillée par un hook de pré-build PlatformIO ; Arduino IDE n'a pas d'équivalent, donc les builds depuis là-bas rapportent <code>nogit</code> plutôt qu'un hash potentiellement obsolète. La page est aussi servie avec <code>Cache-Control: no-store</code>, pour qu'un navigateur ne puisse pas associer une page en cache à un firmware plus récent.",
+      feat_classiccv: "<strong>Vision classique (sans modèles, sans internet)</strong> &mdash; trois fonctions qui fonctionnent sur le point d'accès propre de la voiture sans rien télécharger, car ce sont de simples calculs de pixels plutôt qu'un réseau de neurones. Elles tournent aussi à la pleine cadence d'images au lieu des 0,4&ndash;2,5Hz que gère un modèle sur un téléphone, ce qui est ce qui rend les modes de conduite viables.",
+      h_repolayout: "Structure du dépôt",
+      repo_sync: "<code>Codes/4_VideoCar</code> et <code>firmware/4_videocar/src</code> sont maintenus synchronisés &mdash; même source, deux systèmes de build. Si vous modifiez l'un, répercutez le changement dans l'autre. Les trois autres sketches (<code>1_blink</code>, <code>2_breathing_light</code>, <code>3_motor</code>) n'existent qu'en tant que sketches Arduino sous <code>Codes/</code> et projets PlatformIO sous <code>firmware/</code> &mdash; aucune amélioration n'y a été apportée, ce sont de simples démos incluses pour un pack d'atelier complet.",
+      h_buildsystems: "Systèmes de build",
+      h3_pio: "PlatformIO (firmware/)",
+      pio_p1: "Chaque sketch est son propre projet PlatformIO sous <code>firmware/&lt;nom&gt;/</code>, tous ciblant <code>env:esp32cam</code> (brochage AI-Thinker) puisque c'est la même carte physique pour les quatre :",
+      th_app: "App", th_notes: "Notes",
+      app_blink: "Clignotement de LED trivial, aucune configuration spéciale nécessaire.",
+      app_breathing: "Fondu de LED en PWM, aucune configuration spéciale nécessaire.",
+      app_motor: "Avance/recule/tourne à gauche/à droite immédiatement au démarrage/reset &mdash; <strong>laissez de l'espace à la voiture pour bouger</strong> avant de la flasher ou de la réinitialiser.",
+      app_videocar: "Le projet principal &mdash; voir le tableau ci-dessous pour comprendre pourquoi son <code>platformio.ini</code> a des réglages supplémentaires dont les trois autres n'ont pas besoin.",
+      th_setting: "Réglage", th_value: "Valeur", th_why: "Pourquoi",
+      ini_platform: "Figé, pas laissé sur \"latest\" &mdash; une plateforme non figée peut silencieusement tirer une version du pilote <code>esp32-camera</code> différente de celle installée par Arduino IDE, ce qui change le comportement de sondage du capteur caméra. <code>6.5.0</code> (arduino-esp32 2.0.14) est la version confirmée fonctionner pour ce projet. Les trois autres apps sont figées sur la même version aussi, par cohérence, même si elles sont trop simples pour y être sensibles.",
+      ini_partitions: "Le binaire caméra+WiFi+serveur web ne tient pas dans la table de partitions par défaut. Équivalent au choix \"Huge APP (3MB No OTA/1MB SPIFFS)\" dans Arduino IDE.",
+      ini_buildflags: "Le menu <code>Tools &gt; PSRAM: Enabled</code> d'Arduino IDE règle cela en coulisses ; la définition de carte générique <code>esp32cam</code> de PlatformIO ne le fait pas, même si la carte a de la PSRAM. <strong>C'était la véritable cause racine de \"fonctionne dans Arduino IDE, la caméra échoue dans PlatformIO\" (<code>Camera init failed with error 0x106</code>)</strong> &mdash; voir <a href=\"#troubleshooting\">Dépannage</a>.",
+      ini_uploadspeed: "Valeur par défaut plus sûre que 921600 pour les cartes flashées via un simple adaptateur FTDI sans circuit de reset automatique.",
+      menu_label: "menu",
+      launch_p: "<span>Il demande avec quelle app travailler au démarrage (découvre automatiquement tout</span> <code>firmware/&lt;nom&gt;/platformio.ini</code>), et l'option 0 change d'app à tout moment sans redémarrer le script. L'option 4 (Flash) affiche le rappel IO0/bouton BOOT dont ont besoin la plupart des programmeurs ESP32-CAM nus : maintenez IO0, appuyez sur RESET, relâchez IO0 dès que \"Connecting....\" retente activement &mdash; et un avertissement supplémentaire pour <code>3_motor</code> pour laisser de l'espace à la voiture.",
+      clean_note: "Si vous modifiez un <code>platformio.ini</code> (par ex. en refigeant la version de la plateforme), lancez l'option 8 (Clean) avant de recompiler pour qu'un cache <code>.pio/</code> obsolète ne masque pas le changement.",
+      h3_arduino: "Arduino IDE (Codes/4_VideoCar/)",
+      arduino_p: "Flux Arduino IDE standard. Assurez-vous que <code>Tools &gt; PSRAM</code> est réglé sur <code>Enabled</code> et que <code>Tools &gt; Partition Scheme</code> est réglé sur un schéma avec assez d'espace app (par ex. \"Huge APP (3MB No OTA/1MB SPIFFS)\").",
+      h_troubleshooting: "Dépannage",
+      ts_intro: "<span>Voir aussi la section</span> <a href=\"https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html#common-problems\" target=\"_blank\" rel=\"noopener\">Common Problems</a> du tutoriel officiel (mauvaise sélection de carte, problèmes de connexion IP/WiFi, batterie/charge) pour les problèmes sans rapport avec les changements de ce dépôt.",
+      ts_h1: "Camera init failed avec l'erreur 0x106 (seulement sous PlatformIO, fonctionne bien dans Arduino IDE)",
+      ts_p1: "C'est <code>ESP_ERR_NOT_SUPPORTED</code> depuis le sondage du capteur caméra. Si la même carte fonctionne dans Arduino IDE, c'est une incompatibilité de toolchain/build-flags, pas matérielle &mdash; voir les notes sur la PSRAM/le figeage de plateforme ci-dessus. Le <code>platformio.ini</code> de ce projet est déjà configuré pour l'éviter ; si ça persiste, lancez l'option 8 (Clean) de <code>./launch.sh</code> pour vider tout cache de build obsolète, et vérifiez que la version du cœur <code>esp32</code> installée dans votre Arduino IDE (<code>Tools &gt; Board &gt; Boards Manager</code>) correspond à peu près à la version de plateforme PlatformIO figée &mdash; si elle est très différente, refigez <code>platform = espressif32@X.Y.Z</code> pour correspondre.",
+      ts_h2: "Redémarrages répétés juste après une erreur caméra",
+      ts_p2: "Généralement une alimentation marginale &mdash; l'initialisation caméra + WiFi provoque un pic de courant que beaucoup d'adaptateurs FTDI ne peuvent pas fournir proprement. Utilisez une source 5V/2A correcte. Le sketch active déjà le contournement du détecteur de sous-tension, qui fera apparaître ceci comme un message de réessai/erreur propre plutôt qu'une boucle de redémarrage silencieuse, mais ne corrige pas la sous-tension sous-jacente.",
+      ts_h3: "La voiture ne s'arrête pas quand vous fermez l'onglet du navigateur / perdez le WiFi",
+      ts_p3: "Ne devrait pas arriver &mdash; le failsafe du firmware arrête les moteurs après 500ms sans commande. Si vous constatez le contraire, vérifiez l'empreinte de build dans le pied de page de la page de contrôle &mdash; si elle indique <code>nogit</code> ou un commit inattendu, vous faites peut-être tourner le firmware keyestudio d'origine, qui n'a pas ce failsafe.",
+      ts_h4: "Une fonction Vision dit qu'elle ne peut pas charger, sur le WiFi propre de la voiture",
+      ts_p4: "Normal la première fois. Les modèles viennent d'un CDN et le point d'accès de la voiture n'a pas internet. Rejoignez un routeur, activez la fonction une fois pour que ses fichiers atterrissent dans le cache hors-ligne (le panneau Offline affiche le nombre et la taille), puis retournez sur le point d'accès de la voiture &mdash; ça fonctionnera à partir de là. Plates est l'exception : Tesseract.js se charge depuis un Web Worker que le cache ne peut pas intercepter, donc ça reste dépendant d'internet.",
+      ts_h5: "Le flux vidéo meurt quand une fonction Vision ou d'autonomie démarre",
+      ts_p5: "Le flux est récupéré avec <code>crossorigin=\"anonymous\"</code> pour que la page puisse lire les images depuis celui-ci, ce qui nécessite l'en-tête CORS que le firmware règle sur le port 81. Si les deux ne sont pas d'accord, le navigateur refuse carrément l'image. La page détecte cela et se reconnecte sans CORS après deux échecs, se repliant sur le polling <code>/capture</code>, donc ça devrait s'auto-réparer en quelques secondes &mdash; sinon, comparez le commit dans l'empreinte de build du pied de page avec <code>git log --oneline</code> et reflashez s'ils ne correspondent pas.",
+      ts_h6: "Le suiveur de ligne ne bouge pas du tout",
+      ts_p6: "Mettez le curseur Vitesse au maximum. Il se multiplie avec le plafond propre du mode, et <code>LINE_SPEED</code> est délibérément bas (26), donc un curseur réduit peut laisser les moteurs sous leur seuil de décollage. Si ça ne bouge toujours pas, augmentez <code>LINE_SPEED</code> dans <code>app_server.h</code>.",
+      ts_h7: "Le suiveur de ligne zigzague ou perd la ligne",
+      ts_p7: "Baissez <code>LINE_KP</code>, ne l'augmentez pas. La boucle est limitée par la latence d'aller-retour plutôt que par le gain, et plus de gain aggrave une boucle dominée par le délai. Si ça rate les virages à la place, augmentez <code>LINE_TURN_CUT</code> pour ralentir davantage en tournant. Si ça signale &ldquo;looking for a line&rdquo; sur une vraie ligne, le contraste est trop faible &mdash; utilisez un ruban plus large et plus foncé avant de toucher à <code>LINE_MIN_CONTRAST</code>.",
+      ts_h8: "Un mode autonome ne reste pas armé",
+      ts_p8: "Toute entrée manuelle le désarme par conception, tout comme masquer l'onglet du navigateur, et perdre la cible arrête la voiture après 0,7s et la désarme après 3s. Les trois sont intentionnels.",
+      ts_h9: "Aucune authentification sur les points de contrôle",
+      ts_p9: "<span>Limitation connue et non résolue héritée du sketch d'origine &mdash; voir</span> <a href=\"report.html\">report.html</a> pour les détails. Quiconque sur le réseau WiFi <code>keyes1</code> (mot de passe par défaut <code>88888888</code>) peut piloter la voiture.",
+      h_githistory: "Historique Git",
+      git_p: "Chaque commit est une fonctionnalité/correction autonome ; <code>git log -p</code> donne le diff complet ligne par ligne par rapport au sketch keyestudio d'origine à tout moment.",
+      footer_note: "Généré depuis <code>README.md</code> à la racine du dépôt &mdash; ce fichier est la source de vérité ; ceci est une copie mise en forme pour une lecture plus facile dans un navigateur."
+    },
+    ar: {
+      tagline: "فيرموير مُحسَّن + صفحة تحكم عبر الويب لسيارة keyestudio ESP32-CAM Video Smart Car. مبني فوق الكود الأصلي من keyestudio، مع عصا تحكم افتراضية، آلية أمان عند انقطاع الاتصال، التقاط صور/فيديو، واجهة تحكم مُعاد تصميمها، ونظام بناء PlatformIO إلى جانب كود Arduino IDE الأصلي.",
+      h_quickstart: "البدء السريع",
+      qs_p1: "<strong>Arduino IDE</strong> (الأساس المضمون): افتح <code>Codes/4_VideoCar/4_VideoCar.ino</code>، اختر إصدار حزمة اللوحة <code>esp32</code> من <code>Tools &gt; Board &gt; Boards Manager</code>، فعّل <code>Tools &gt; PSRAM: Enabled</code>، اختر لوحة AI-Thinker ESP32-CAM، ثم قم بالفلاش كالمعتاد.",
+      qs_p2: "<strong>PlatformIO</strong>:",
+      qs_p3: "يرشدك خلال التحقق من/تثبيت PlatformIO، البناء، الفلاش، وفتح شاشة المراقبة التسلسلية. راجع <a href=\"#build-systems\">أنظمة البناء</a> أدناه لمعرفة ما يفعله كل خيار في القائمة.",
+      qs_p4: "بعد الفلاش، اتصل بشبكة WiFi باسم <code>keyes1</code> (كلمة المرور <code>88888888</code>) وافتح <code>http://192.168.4.1</code> في المتصفح.",
+      qs_note1: "<strong>&#128218; جديد على هذا، أو تريد التحكم في السيارة من نصوصك البرمجية الخاصة؟</strong> <a href=\"ports.html\">ports.html</a> دليل خطوة بخطوة للخادمَين &mdash; ما يفعله المنفذان 80 و81، لماذا يوجد اثنان منهما، كل نقطة نهاية بنطاقات قيمها، وآلية الأمان بـ500 مللي ثانية التي تفاجئ الجميع أول مرة يحاولون فيها التحكم بالسيارة عبر <code>curl</code>.",
+      qs_note2_t: "<strong>&#9888; ميزات الرؤية تحتاج إلى إنترنت &mdash; وضع نقطة الوصول الافتراضي لا يوفره.</strong>",
+      qs_note2_p1: "افتراضيًا (<code>ap = 1</code>) تستضيف السيارة شبكتها المعزولة الخاصة <code>keyes1</code>، غير المتصلة بأي شيء. <strong>تتبع الوضعية، تتبع اليدين، تعابير الوجه، اللوحات، AI Vision، وبديل jsQR جميعها تُنزّل نماذجها من CDN أول مرة يتم تفعيلها، لذا ستفشل عند بدء التشغيل على نقطة وصول السيارة الخاصة.</strong> القيادة، بث الفيديو، اللقطات، والتسجيل كلها تعمل بشكل جيد هناك &mdash; فقط التراكبات المعتمدة على النماذج لا تعمل.",
+      qs_note2_p2: "لاستخدامها، اضبط <code>ap = 0</code> في أعلى <code>4_VideoCar.ino</code> مع <code>ssid</code>/<code>password</code> جهاز التوجيه الخاص بك، أعد الفلاش، واقرأ عنوان IP الخاص بالسيارة من شاشة المراقبة التسلسلية. سيصبح لهاتفك أو حاسوبك المحمول اتصال بالسيارة والإنترنت في آن واحد.",
+      qs_note2_p3: "الاستثناء الوحيد هو <strong>QR / الباركود</strong> على Chrome أو Edge أو Android Chrome، والذي يستخدم <code>BarcodeDetector</code> المدمج في المتصفح ولا يحتاج إلى أي شبكة على الإطلاق &mdash; هذا يعمل على نقطة وصول السيارة الخاصة.",
+      h_features: "الميزات مقارنة بكود keyestudio الأصلي",
+      feat_joystick: "<strong>التحكم بعصا التحكم</strong> &mdash; عصا تحكم افتراضية قابلة للسحب على الشاشة (<code>/joystick?x=&amp;y=</code>)، تُمزج بأسلوب الأركيد إلى إشارة PWM لكل عجلة، إلى جانب أدوات التحكم الأصلية D-pad/لوحة المفاتيح.",
+      feat_failsafe: "<strong>آلية أمان عند انقطاع الاتصال</strong> &mdash; تتوقف السيارة تلقائيًا إذا لم تُستقبل أي أمر خلال 500 مللي ثانية (انقطاع WiFi، قفل الهاتف، إغلاق التبويب، إلخ)، بدلًا من الاستمرار دون مراقبة. إعادة اتصال WiFi تلقائية في وضع المحطة، استعادة تلقائية لبث MJPEG، ومؤشر اتصال حي.",
+      feat_settings: "<strong>حفظ الإعدادات</strong> &mdash; السرعة والانحراف والأضواء والجودة والدقة والقلب والمرآة تُحفظ جميعها بطريقتين: على السيارة نفسها (ذاكرة NVS، تبقى بعد إعادة التشغيل/الفلاش، نفس القيم لأي جهاز يتصل) وفي <code>localStorage</code> الخاص بالمتصفح (استعادة فورية عند إعادة التحميل). عند تحميل الصفحة، قيم الجهاز نفسها لها الأولوية دائمًا إن اختلفت عن الذاكرة المحلية.",
+      feat_flip: "<strong>تبديل القلب/المرآة الحي</strong> &mdash; أزرار Flip وMirror في لوحة الأنظمة تستدعي <code>set_vflip</code>/<code>set_hmirror</code> الخاصة بالحساس مباشرة، مما يتيح تصحيح اتجاه الكاميرا لهيكل سيارتك دون إعادة الفلاش.",
+      feat_pose: "<strong>كشف الوضعية</strong> &mdash; تتبع الهيكل العظمي MoveNet (أزرق فاتح)، نقاط وخطوط الأطراف لعدة أشخاص في آن واحد.",
+      feat_hands: "<strong>تتبع اليدين</strong> &mdash; MediaPipe Hands عبر بيئة تشغيل <code>tfjs</code> الخاصة بـTF.js (يتجنب حزمة MediaPipe script/wasm منفصلة من مضيف آخر)، 21 نقطة رئيسية لكل يد بالإضافة إلى تحديد اليد اليمنى/اليسرى (برتقالي).",
+      feat_expr: "<strong>تعابير الوجه</strong> &mdash; سعيد/حزين/غاضب/متفاجئ/إلخ عبر <code>@vladmandic/face-api</code> (نسخة مُطوَّرة بنشاط من face-api.js الذي توقف تطويره)، حيث تُنشر أوزان النموذج في نفس حزمة npm للسكربت &mdash; خلافًا لبقية Vision، هذا يعتمد على مضيف واحد فقط (jsdelivr) بدلًا من اثنين.",
+      feat_codes: "<strong>QR / الباركود</strong> &mdash; يستخدم <code>BarcodeDetector</code> المدمج في المتصفح عند توفره (Chrome/Edge/Android Chrome) &mdash; لا حاجة لأي شبكة، يعمل حتى على نقطة وصول السيارة المعزولة. يتراجع إلى مكتبة jsQR (رموز QR فقط، يحتاج إنترنت مرة واحدة) على المتصفحات بدون دعم أصلي (Safari/iOS).",
+      feat_plates: "<strong>اللوحات</strong> &mdash; قارئ لوحات ترخيص تجريبي. لا يوجد نموذج جاهز لكشف اللوحات كما هو الحال للأجسام/الوجوه، لذا يُعيد هذا استخدام مربعات السيارة/الشاحنة/الحافلة من COCO-SSD، يقتصّ منطقة اللوحة المحتملة، ويُشغّل OCR حقيقيًا (Tesseract.js) عليها. استدلالي، وليس كاشفًا مُدرَّبًا، ومحدود بدقة الكاميرا 320×240 &mdash; يعمل بشكل أفضل من قرب، بشكل مباشر، وبإضاءة جيدة. يعمل بمعدله البطيء الخاص (~2.5 ثانية) لأن OCR أثقل بكثير من كشف الأجسام/الوجوه.",
+      feat_vision: "<strong>AI Vision</strong> &mdash; تراكب حي قابل للتفعيل يكشف الأجسام (COCO-SSD) والوجوه (BlazeFace) مباشرة فوق منظار الرؤية، يعمل بالكامل داخل المتصفح لأن ESP32 لا يمكنه تشغيل شبكة عصبية إلى جانب كل شيء آخر. يحتاج إلى إنترنت على الشبكة التي يستخدمها الجهاز لتحميل النماذج أول مرة.",
+      feat_buildstamp: "<strong>بصمة البناء</strong> &mdash; تذييل صفحة التحكم، و<code>/status</code>، ووحدة التحكم التسلسلية عند الإقلاع، جميعها تُبلّغ عن إصدار الفيرموير، وطابع زمني للبناء من المُصرّف، ومراجعة git التي أتى منها (مع لاحقة <code>-dirty</code>، تظهر بالكهرماني، عندما كانت الشجرة تحتوي تغييرات غير محفوظة). سابقًا لم تكن هناك طريقة لمعرفة ما يعمل فعليًا على السيارة دون إعادة فلاشها. تُختم المراجعة بواسطة خطاف ما قبل البناء في PlatformIO؛ Arduino IDE ليس له مكافئ، لذا تُبلّغ البُنى من هناك عن <code>nogit</code> بدلًا من تجزئة قد تكون قديمة. تُقدَّم الصفحة أيضًا مع <code>Cache-Control: no-store</code>، حتى لا يقرن المتصفح صفحة مخبأة بفيرموير أحدث.",
+      feat_classiccv: "<strong>رؤية حاسوبية كلاسيكية (بدون نماذج، بدون إنترنت)</strong> &mdash; ثلاث ميزات تعمل على نقطة وصول السيارة الخاصة دون تنزيل أي شيء، لأنها حسابات بكسل بسيطة وليست شبكة عصبية. كما تعمل بمعدل الإطارات الكامل بدلًا من 0.4–2.5 هرتز التي يديرها نموذج على الهاتف، وهذا ما يجعل أوضاع القيادة قابلة للتطبيق.",
+      h_repolayout: "هيكل المستودع",
+      repo_sync: "<code>Codes/4_VideoCar</code> و<code>firmware/4_videocar/src</code> يُحافَظ على تزامنهما &mdash; نفس المصدر، نظاما بناء. إذا عدّلت أحدهما، انسخ التغيير إلى الآخر. الأكواد الثلاثة الأخرى (<code>1_blink</code>، <code>2_breathing_light</code>، <code>3_motor</code>) موجودة فقط كأكواد Arduino تحت <code>Codes/</code> ومشاريع PlatformIO تحت <code>firmware/</code> &mdash; لم تُجرَ عليها أي تحسينات، إنها عروض بسيطة مُضمَّنة لتكوين حزمة ورشة عمل كاملة.",
+      h_buildsystems: "أنظمة البناء",
+      h3_pio: "PlatformIO (firmware/)",
+      pio_p1: "كل كود هو مشروع PlatformIO خاص به تحت <code>firmware/&lt;name&gt;/</code>، جميعها تستهدف <code>env:esp32cam</code> (توزيع دبابيس AI-Thinker) لأنها نفس اللوحة الفعلية للأربعة جميعًا:",
+      th_app: "التطبيق", th_notes: "ملاحظات",
+      app_blink: "وميض LED بسيط، لا يحتاج تهيئة خاصة.",
+      app_breathing: "تلاشي LED بـPWM، لا يحتاج تهيئة خاصة.",
+      app_motor: "يتحرك للأمام/الخلف/اليسار/اليمين فور الإقلاع/إعادة التشغيل &mdash; <strong>اترك مساحة للسيارة كي تتحرك</strong> قبل فلاشها أو إعادة تشغيلها.",
+      app_videocar: "المشروع الرئيسي &mdash; انظر الجدول أدناه لمعرفة سبب احتواء <code>platformio.ini</code> الخاص به على إعدادات إضافية لا تحتاجها الثلاثة الأخرى.",
+      th_setting: "الإعداد", th_value: "القيمة", th_why: "السبب",
+      ini_platform: "مثبّت، وليس متروكًا على \"latest\" &mdash; منصة غير مثبّتة قد تسحب بصمت إصدار برنامج تشغيل <code>esp32-camera</code> مختلفًا عمّا ثبّته Arduino IDE، مما يغيّر سلوك فحص حساس الكاميرا. <code>6.5.0</code> (arduino-esp32 2.0.14) هو الإصدار المؤكد عمله مع هذا المشروع. التطبيقات الثلاثة الأخرى مثبّتة على نفس الإصدار أيضًا، للاتساق، رغم أنها بسيطة جدًا لتكون حساسة له.",
+      ini_partitions: "الملف الثنائي للكاميرا+WiFi+خادم الويب لا يتسع في جدول التقسيم الافتراضي. يعادل اختيار \"Huge APP (3MB No OTA/1MB SPIFFS)\" في Arduino IDE.",
+      ini_buildflags: "قائمة <code>Tools &gt; PSRAM: Enabled</code> في Arduino IDE تضبط هذه خلف الكواليس؛ تعريف اللوحة العام <code>esp32cam</code> في PlatformIO لا يفعل ذلك، رغم أن اللوحة تحتوي PSRAM. <strong>كان هذا السبب الجذري الفعلي لـ\"يعمل في Arduino IDE، تفشل الكاميرا في PlatformIO\" (<code>Camera init failed with error 0x106</code>)</strong> &mdash; انظر <a href=\"#troubleshooting\">استكشاف الأخطاء</a>.",
+      ini_uploadspeed: "افتراضي أكثر أمانًا من 921600 للوحات المفلوشة عبر محول FTDI بسيط بدون دائرة إعادة تشغيل تلقائية.",
+      menu_label: "القائمة",
+      launch_p: "<span>يسأل عن التطبيق للعمل معه عند البدء (يكتشف تلقائيًا أي</span> <code>firmware/&lt;name&gt;/platformio.ini</code>)، والخيار 0 يبدّل التطبيقات في أي وقت دون إعادة تشغيل السكربت. الخيار 4 (Flash) يطبع تذكير زر IO0/BOOT الذي تحتاجه معظم مبرمجات ESP32-CAM المجردة: أمسك IO0، اضغط RESET، حرّر IO0 بمجرد أن تبدأ \"Connecting....\" بإعادة المحاولة فعليًا &mdash; مع تحذير إضافي لـ<code>3_motor</code> بترك مساحة للسيارة كي تتحرك.",
+      clean_note: "إذا غيّرت <code>platformio.ini</code> (مثلًا بإعادة تثبيت إصدار المنصة)، شغّل الخيار 8 (Clean) قبل إعادة البناء حتى لا تخفي ذاكرة تخزين مؤقت <code>.pio/</code> قديمة التغيير.",
+      h3_arduino: "Arduino IDE (Codes/4_VideoCar/)",
+      arduino_p: "تدفق Arduino IDE القياسي. تأكد من ضبط <code>Tools &gt; PSRAM</code> على <code>Enabled</code> وأن <code>Tools &gt; Partition Scheme</code> مضبوط على مخطط يحتوي مساحة تطبيق كافية (مثل \"Huge APP (3MB No OTA/1MB SPIFFS)\").",
+      h_troubleshooting: "استكشاف الأخطاء",
+      ts_intro: "<span>راجع أيضًا قسم</span> <a href=\"https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html#common-problems\" target=\"_blank\" rel=\"noopener\">Common Problems</a> في الدليل الرسمي (اختيار لوحة خاطئ، مشاكل اتصال IP/WiFi، البطارية/الشحن) للمشاكل غير المرتبطة بتغييرات هذا المستودع.",
+      ts_h1: "فشل تهيئة الكاميرا بخطأ 0x106 (فقط تحت PlatformIO، يعمل بشكل جيد في Arduino IDE)",
+      ts_p1: "هذا هو <code>ESP_ERR_NOT_SUPPORTED</code> من فحص حساس الكاميرا. إذا كانت نفس اللوحة تعمل في Arduino IDE، فهذا عدم توافق في سلسلة الأدوات/أعلام البناء، وليس مشكلة عتاد &mdash; راجع ملاحظات PSRAM/تثبيت المنصة أعلاه. <code>platformio.ini</code> الخاص بهذا المشروع مُهيَّأ بالفعل لتجنب ذلك؛ إذا استمرت المشكلة، شغّل الخيار 8 (Clean) من <code>./launch.sh</code> لمسح أي ذاكرة بناء قديمة، وتأكد من أن إصدار نواة <code>esp32</code> المثبّت في Arduino IDE (<code>Tools &gt; Board &gt; Boards Manager</code>) يقارب إصدار منصة PlatformIO المثبّت &mdash; إذا كان مختلفًا جدًا، أعد تثبيت <code>platform = espressif32@X.Y.Z</code> ليطابقه.",
+      ts_h2: "إعادة تشغيل متكررة مباشرة بعد خطأ كاميرا",
+      ts_p2: "عادة مصدر طاقة هامشي &mdash; تهيئة الكاميرا + WiFi تسبب ارتفاعًا مفاجئًا في التيار لا يستطيع الكثير من محولات FTDI توفيره بشكل نظيف. استخدم مصدرًا مناسبًا 5V/2A. السكربت يفعّل بالفعل حل التفاف كاشف انخفاض الجهد، الذي سيُظهر هذا كرسالة إعادة محاولة/خطأ نظيفة بدلًا من حلقة إعادة تشغيل صامتة، لكنه لا يصلح انخفاض الجهد الأساسي.",
+      ts_h3: "لا تتوقف السيارة عند إغلاق تبويب المتصفح / فقدان WiFi",
+      ts_p3: "لا يجب أن يحدث هذا &mdash; آلية الأمان في الفيرموير توقف المحركات بعد 500 مللي ثانية بدون أمر. إذا كنت ترى غير ذلك، تحقق من بصمة البناء في تذييل صفحة التحكم &mdash; إذا أظهرت <code>nogit</code> أو التزامًا غير متوقع، فقد تكون تشغّل فيرموير keyestudio الأصلي، الذي لا يحتوي على آلية الأمان هذه.",
+      ts_h4: "ميزة رؤية تقول إنها لا يمكنها التحميل، على WiFi السيارة الخاص",
+      ts_p4: "متوقع أول مرة. النماذج تأتي من CDN ونقطة وصول السيارة ليس لديها إنترنت. اتصل بجهاز توجيه، فعّل الميزة مرة واحدة حتى تستقر ملفاتها في الذاكرة المؤقتة دون اتصال (لوحة Offline تُظهر العدد والحجم)، ثم عد إلى نقطة وصول السيارة &mdash; ستعمل من حينها. اللوحات هي الاستثناء: يُحمَّل Tesseract.js من داخل Web Worker لا تستطيع الذاكرة المؤقتة اعتراضه، لذا يبقى معتمدًا على الإنترنت فقط.",
+      ts_h5: "يموت بث الفيديو عند بدء ميزة رؤية أو استقلالية",
+      ts_p5: "يُجلب البث بـ<code>crossorigin=\"anonymous\"</code> حتى تستطيع الصفحة قراءة الإطارات منه، وهذا يتطلب رأس CORS الذي يضبطه الفيرموير على المنفذ 81. إذا اختلفا يرفض المتصفح الصورة تمامًا. تكتشف الصفحة هذا وتعيد الاتصال بدون CORS بعد فشلين، متراجعة إلى استقصاء <code>/capture</code>، لذا يجب أن تُصلح نفسها خلال ثوانٍ &mdash; إن لم تفعل، قارن الالتزام في بصمة بناء التذييل مع <code>git log --oneline</code> وأعد الفلاش إن اختلفا.",
+      ts_h6: "متتبع الخط لا يتحرك على الإطلاق",
+      ts_p6: "ضع منزلق السرعة على الحد الأقصى. يُضرب في سقف الوضع الخاص به، و<code>LINE_SPEED</code> منخفض عمدًا (26)، لذا قد يترك منزلق مخفَّض المحركات تحت عتبة الحركة الأولى. إذا استمر عدم الحركة، ارفع <code>LINE_SPEED</code> في <code>app_server.h</code>.",
+      ts_h7: "متتبع الخط يتمايل أو يفقد الخط",
+      ts_p7: "اخفض <code>LINE_KP</code>، لا ترفعه. الحلقة محدودة بزمن الرحلة ذهابًا وإيابًا وليس بالكسب، والمزيد من الكسب يزيد حلقة تهيمن عليها التأخيرات سوءًا. إذا كانت تفوّت المنعطفات بدلًا من ذلك، ارفع <code>LINE_TURN_CUT</code> لتبطئ أكثر أثناء الانعطاف. إذا أبلغت &ldquo;looking for a line&rdquo; فوق خط حقيقي، فالتباين منخفض جدًا &mdash; استخدم شريطًا أعرض وأغمق قبل لمس <code>LINE_MIN_CONTRAST</code>.",
+      ts_h8: "وضع مستقل لا يبقى مسلّحًا",
+      ts_p8: "أي إدخال يدوي ينزع تسليحه بالتصميم، وكذلك إخفاء تبويب المتصفح، وفقدان الهدف يوقف السيارة بعد 0.7 ثانية وينزع التسليح بعد 3 ثوانٍ. الثلاثة مقصودة.",
+      ts_h9: "لا مصادقة على نقاط التحكم",
+      ts_p9: "<span>قيد معروف وغير معالج موروث من الكود الأصلي &mdash; راجع</span> <a href=\"report.html\">report.html</a> للتفاصيل. أي شخص على شبكة WiFi باسم <code>keyes1</code> (كلمة المرور الافتراضية <code>88888888</code>) يمكنه قيادة السيارة.",
+      h_githistory: "سجل Git",
+      git_p: "كل التزام هو ميزة/إصلاح قائم بذاته؛ <code>git log -p</code> يعطي الفرق الكامل سطرًا بسطر مقابل كود keyestudio الأصلي في أي نقطة.",
+      footer_note: "مُولَّد من <code>README.md</code> في جذر المستودع &mdash; ذلك الملف هو مصدر الحقيقة؛ هذا نسخة منسقة لقراءة أسهل في المتصفح."
+    }
+  };
+  var RTL_LANGS = { ar: true };
+  var ORIG = {};
+  var els = document.querySelectorAll('[data-i18n]');
+  els.forEach(function(el){ ORIG[el.getAttribute('data-i18n')] = el.innerHTML; });
+
+  function applyLang(lang){
+    if (lang !== 'fr' && lang !== 'ar') lang = 'en';
+    document.documentElement.lang = lang;
+    document.documentElement.dir = RTL_LANGS[lang] ? 'rtl' : 'ltr';
+    els.forEach(function(el){
+      var key = el.getAttribute('data-i18n');
+      var dict = I18N[lang];
+      el.innerHTML = (dict && dict[key] != null) ? dict[key] : ORIG[key];
+    });
+    document.querySelectorAll('.lang-btn').forEach(function(btn){
+      btn.classList.toggle('active', btn.getAttribute('data-lang') === lang);
+    });
+    try { localStorage.setItem('videocar-readme-lang', lang); } catch(e){}
+  }
+
+  window.setLang = applyLang;
+
+  var saved = 'en';
+  try { saved = localStorage.getItem('videocar-readme-lang') || 'en'; } catch(e){}
+  applyLang(saved);
+})();
+</script>
+
 </body>
 </html>

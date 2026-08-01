@@ -535,6 +535,10 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           header{display:flex;align-items:center;justify-content:space-between;padding:14px 2px 10px;}
           header h1{font-size:15px;letter-spacing:.12em;margin:0;font-weight:700;text-transform:uppercase;}
           header h1 span{color:var(--amber);}
+          #lang-switch{display:flex;gap:4px;}
+          .lang-btn{background:var(--panel);border:1px solid var(--border);color:var(--muted);
+            font-size:10px;font-weight:700;letter-spacing:.06em;padding:4px 7px;border-radius:6px;cursor:pointer;}
+          .lang-btn.active{background:var(--amber);color:#000;border-color:var(--amber);}
           .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
             margin:0 0 12px;padding:12px;}
           .panel-label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
@@ -652,7 +656,12 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
     <body>
       <header>
         <h1>&#128663; VIDEO<span>CAR</span></h1>
-        <div id="conn-status"><span id="conn-dot"></span><span id="conn-text">Connecting&hellip;</span></div>
+        <div id="lang-switch">
+          <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
+          <button class="lang-btn" data-lang="fr" onclick="setLang('fr')">FR</button>
+          <button class="lang-btn" data-lang="ar" onclick="setLang('ar')">AR</button>
+        </div>
+        <div id="conn-status"><span id="conn-dot"></span><span id="conn-text" data-i18n="conn_connecting">Connecting&hellip;</span></div>
       </header>
 
       <div id="video-dock">
@@ -666,7 +675,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <div class="vf-corner vf-tr"></div>
           <div class="vf-corner vf-bl"></div>
           <div class="vf-corner vf-br"></div>
-          <div id="rec-indicator"><span id="rec-dot"></span>LIVE</div>
+          <div id="rec-indicator"><span id="rec-dot"></span><span data-i18n="live">LIVE</span></div>
           <div id="vf-tag">CAM-01</div>
         </div>
       </div>
@@ -674,7 +683,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       </div>
 
       <section class="panel">
-        <div class="panel-label">Drive</div>
+        <div class="panel-label" data-i18n="panel_drive">Drive</div>
         <div id="joystick-container">
           <div id="joystick-base">
             <div id="joystick-thumb"></div>
@@ -682,130 +691,241 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
         </div>
       </section>
       <section class="panel">
-        <div class="panel-label">Manual</div>
+        <div class="panel-label" data-i18n="panel_manual">Manual</div>
         <div id="dpad">
-          <button id="forward" onpointerdown="document.dispatchEvent(fwdpress);" onpointerup="document.dispatchEvent(fwdrelease);" onpointerleave="document.dispatchEvent(fwdrelease);">&#9650; Fwd</button>
-          <button id="turnleft" onpointerdown="document.dispatchEvent(leftpress);" onpointerup="document.dispatchEvent(leftrelease);" onpointerleave="document.dispatchEvent(leftrelease);">&#9664; Left</button>
-          <button id="turnright" onpointerdown="document.dispatchEvent(rightpress);" onpointerup="document.dispatchEvent(rightrelease);" onpointerleave="document.dispatchEvent(rightrelease);">Right &#9654;</button>
-          <button id="backward" onpointerdown="document.dispatchEvent(backpress);" onpointerup="document.dispatchEvent(backrelease);" onpointerleave="document.dispatchEvent(backrelease);">&#9660; Back</button>
+          <button id="forward" onpointerdown="document.dispatchEvent(fwdpress);" onpointerup="document.dispatchEvent(fwdrelease);" onpointerleave="document.dispatchEvent(fwdrelease);">&#9650; <span data-i18n="btn_fwd">Fwd</span></button>
+          <button id="turnleft" onpointerdown="document.dispatchEvent(leftpress);" onpointerup="document.dispatchEvent(leftrelease);" onpointerleave="document.dispatchEvent(leftrelease);">&#9664; <span data-i18n="btn_left">Left</span></button>
+          <button id="turnright" onpointerdown="document.dispatchEvent(rightpress);" onpointerup="document.dispatchEvent(rightrelease);" onpointerleave="document.dispatchEvent(rightrelease);"><span data-i18n="btn_right">Right</span> &#9654;</button>
+          <button id="backward" onpointerdown="document.dispatchEvent(backpress);" onpointerup="document.dispatchEvent(backrelease);" onpointerleave="document.dispatchEvent(backrelease);">&#9660; <span data-i18n="btn_back">Back</span></button>
         </div>
       </section>
       <section class="panel collapsible" data-panel="autonomy">
-        <div class="panel-label">Autonomy</div>
+        <div class="panel-label" data-i18n="panel_autonomy">Autonomy</div>
         <div class="btn-row">
-          <button id="follow-btn" onclick="toggleFollow()">&#127919; Follow Me</button>
+          <button id="follow-btn" onclick="toggleFollow()">&#127919; <span data-i18n="btn_follow">Follow Me</span></button>
         </div>
         <select id="follow-target">
-          <option value="person">Follow: person</option>
-          <option value="sports ball">Follow: ball</option>
-          <option value="dog">Follow: dog</option>
-          <option value="cat">Follow: cat</option>
-          <option value="bottle">Follow: bottle</option>
-          <option value="chair">Follow: chair</option>
+          <option value="person" data-i18n="follow_person">Follow: person</option>
+          <option value="sports ball" data-i18n="follow_ball">Follow: ball</option>
+          <option value="dog" data-i18n="follow_dog">Follow: dog</option>
+          <option value="cat" data-i18n="follow_cat">Follow: cat</option>
+          <option value="bottle" data-i18n="follow_bottle">Follow: bottle</option>
+          <option value="chair" data-i18n="follow_chair">Follow: chair</option>
         </select>
-        <div id="follow-status">Drives the car on its own to keep the target centred and at a fixed distance. Any manual input disarms it. Give it clear floor space before arming.</div>
+        <div id="follow-status" data-i18n="follow_status">Drives the car on its own to keep the target centred and at a fixed distance. Any manual input disarms it. Give it clear floor space before arming.</div>
       </section>
       <section class="panel collapsible" data-panel="classiccv">
-        <div class="panel-label">Classic CV</div>
+        <div class="panel-label" data-i18n="panel_classiccv">Classic CV</div>
         <div class="btn-row">
-          <button id="motion-btn" onclick="toggleCV('motion')">&#128064; Motion</button>
-          <button id="line-btn" onclick="toggleCV('line')">&#12336; Line</button>
+          <button id="motion-btn" onclick="toggleCV('motion')">&#128064; <span data-i18n="btn_motion">Motion</span></button>
+          <button id="line-btn" onclick="toggleCV('line')">&#12336; <span data-i18n="btn_line">Line</span></button>
         </div>
         <div class="btn-row" style="margin-top:8px;">
-          <button id="chase-btn" onclick="toggleCV('chase')">&#127912; Colour chase</button>
+          <button id="chase-btn" onclick="toggleCV('chase')">&#127912; <span data-i18n="btn_chase">Colour chase</span></button>
         </div>
         <div class="cv-row">
           <input type="color" id="cv-color" value="#dc2828">
-          <button id="cv-sample" onclick="sampleColour()">Sample centre</button>
-          <label><input type="checkbox" id="cv-invert"> light line</label>
+          <button id="cv-sample" onclick="sampleColour()" data-i18n="btn_sample">Sample centre</button>
+          <label><input type="checkbox" id="cv-invert"> <span data-i18n="label_light_line">light line</span></label>
         </div>
-        <div id="cv-status">No models and no internet &mdash; pure pixel maths, so these keep up with the video stream on the car's own WiFi. Line and Colour chase drive the car; give it floor space, and leave the Speed slider high since these cap themselves well below it.</div>
+        <div id="cv-status" data-i18n="cv_status">No models and no internet &mdash; pure pixel maths, so these keep up with the video stream on the car's own WiFi. Line and Colour chase drive the car; give it floor space, and leave the Speed slider high since these cap themselves well below it.</div>
       </section>
       <section class="panel collapsible" data-panel="vision">
-        <div class="panel-label">Vision</div>
+        <div class="panel-label" data-i18n="panel_vision">Vision</div>
         <div class="btn-row">
-          <button id="vision-btn" onclick="toggleVision()">&#129302; AI Vision</button>
+          <button id="vision-btn" onclick="toggleVision()">&#129302; <span data-i18n="btn_vision">AI Vision</span></button>
         </div>
-        <div id="vision-status">Runs in your browser (TensorFlow.js) &mdash; detects objects (cyan) and faces (amber). Needs internet on this network to load the models once.</div>
+        <div id="vision-status" data-i18n="vision_status">Runs in your browser (TensorFlow.js) &mdash; detects objects (cyan) and faces (amber). Needs internet on this network to load the models once.</div>
         <div class="btn-row" style="margin-top:8px;">
-          <button id="plates-btn" onclick="togglePlates()">&#128290; Plates</button>
+          <button id="plates-btn" onclick="togglePlates()">&#128290; <span data-i18n="btn_plates">Plates</span></button>
         </div>
-        <div id="plates-status">Reads text off detected vehicles (magenta) via OCR. Heuristic, low-res (320&times;240) camera &mdash; works best close, well-lit, and square-on to the plate.</div>
+        <div id="plates-status" data-i18n="plates_status">Reads text off detected vehicles (magenta) via OCR. Heuristic, low-res (320&times;240) camera &mdash; works best close, well-lit, and square-on to the plate.</div>
         <div class="btn-row" style="margin-top:8px;">
-          <button id="codes-btn" onclick="toggleCodes()">&#9638; QR / Barcode</button>
+          <button id="codes-btn" onclick="toggleCodes()">&#9638; <span data-i18n="btn_codes">QR / Barcode</span></button>
         </div>
-        <div id="codes-status">Uses your browser's built-in scanner when available &mdash; no internet needed for this one. Falls back to a QR-only library (needs internet once) on browsers without native support.</div>
+        <div id="codes-status" data-i18n="codes_status">Uses your browser's built-in scanner when available &mdash; no internet needed for this one. Falls back to a QR-only library (needs internet once) on browsers without native support.</div>
         <div class="btn-row" style="margin-top:8px;">
-          <button id="pose-btn" onclick="togglePose()">&#128694; Pose</button>
+          <button id="pose-btn" onclick="togglePose()">&#128694; <span data-i18n="btn_pose">Pose</span></button>
         </div>
-        <div id="pose-status">Skeleton tracking (MoveNet) &mdash; needs internet once to load.</div>
+        <div id="pose-status" data-i18n="pose_status">Skeleton tracking (MoveNet) &mdash; needs internet once to load.</div>
         <div class="btn-row" style="margin-top:8px;">
-          <button id="hands-btn" onclick="toggleHands()">&#9995; Hands</button>
+          <button id="hands-btn" onclick="toggleHands()">&#9995; <span data-i18n="btn_hands">Hands</span></button>
         </div>
-        <div id="hands-status">Hand/finger tracking &mdash; needs internet once to load.</div>
+        <div id="hands-status" data-i18n="hands_status">Hand/finger tracking &mdash; needs internet once to load.</div>
         <div class="btn-row" style="margin-top:8px;">
-          <button id="expr-btn" onclick="toggleExpr()">&#128512; Expression</button>
+          <button id="expr-btn" onclick="toggleExpr()">&#128512; <span data-i18n="btn_expr">Expression</span></button>
         </div>
-        <div id="expr-status">Reads facial expressions (happy/sad/surprised/...) &mdash; needs internet once to load.</div>
+        <div id="expr-status" data-i18n="expr_status">Reads facial expressions (happy/sad/surprised/...) &mdash; needs internet once to load.</div>
       </section>
       <section class="panel collapsible" data-panel="capture">
-        <div class="panel-label">Capture</div>
+        <div class="panel-label" data-i18n="panel_capture">Capture</div>
         <div class="btn-row">
-          <button id="snapshot-btn" onclick="takeSnapshot()">&#128247; Snapshot</button>
-          <button id="record-btn" onclick="toggleRecording()">&#9210; Record</button>
+          <button id="snapshot-btn" onclick="takeSnapshot()">&#128247; <span data-i18n="btn_snapshot">Snapshot</span></button>
+          <button id="record-btn" onclick="toggleRecording()">&#9210; <span data-i18n="btn_record">Record</span></button>
         </div>
         <div id="record-status"></div>
       </section>
       <section class="panel collapsible" data-panel="systems">
-        <div class="panel-label">Systems</div>
+        <div class="panel-label" data-i18n="panel_systems">Systems</div>
         <div class="slider-row">
-          <label>Speed</label>
+          <label data-i18n="label_speed">Speed</label>
           <input type="range" id="speed" min="0" max="8" value="8" oninput="document.getElementById('speed-val').textContent=this.value" onchange="sendControl('speed', this.value)">
           <span class="val" id="speed-val">8</span>
         </div>
         <div class="slider-row">
-          <label>Trim</label>
+          <label data-i18n="label_trim">Trim</label>
           <input type="range" id="trim" min="-32" max="32" value="0" oninput="document.getElementById('trim-val').textContent=this.value" onchange="sendControl('trim', this.value)">
           <span class="val" id="trim-val">0</span>
         </div>
         <div class="slider-row">
-          <label>Lights</label>
+          <label data-i18n="label_lights">Lights</label>
           <input type="range" id="flash" min="0" max="255" value="10" oninput="document.getElementById('flash-val').textContent=this.value" onchange="sendControl('flash', this.value)">
           <span class="val" id="flash-val">10</span>
         </div>
         <div class="slider-row">
-          <label>Quality</label>
+          <label data-i18n="label_quality">Quality</label>
           <input type="range" id="quality" min="10" max="63" value="10" oninput="document.getElementById('quality-val').textContent=this.value" onchange="sendControl('quality', this.value)">
           <span class="val" id="quality-val">10</span>
         </div>
         <div class="slider-row">
-          <label>Resolution</label>
+          <label data-i18n="label_resolution">Resolution</label>
           <input type="range" id="framesize" min="0" max="6" value="5" oninput="document.getElementById('framesize-val').textContent=this.value" onchange="sendControl('framesize', this.value)">
           <span class="val" id="framesize-val">5</span>
         </div>
         <div class="slider-row" style="grid-template-columns:66px 1fr;">
-          <label>Orientation</label>
+          <label data-i18n="label_orientation">Orientation</label>
           <div id="flip-row">
-            <button id="vflip-btn" class="active" onclick="toggleFlip('vflip', this)">&#8597; Flip</button>
-            <button id="hmirror-btn" class="active" onclick="toggleFlip('hmirror', this)">&#8596; Mirror</button>
+            <button id="vflip-btn" class="active" onclick="toggleFlip('vflip', this)">&#8597; <span data-i18n="btn_flip">Flip</span></button>
+            <button id="hmirror-btn" class="active" onclick="toggleFlip('hmirror', this)">&#8596; <span data-i18n="btn_mirror">Mirror</span></button>
           </div>
         </div>
       </section>
       <section class="panel collapsible" data-panel="offline">
-        <div class="panel-label">Offline</div>
-        <div id="offline-stats">Checking cache&hellip;</div>
-        <div id="offline-status">Model files are saved to this browser as they download. Turn the Vision features on once somewhere with internet and they'll work afterwards on the car's own WiFi, which has none.</div>
+        <div class="panel-label" data-i18n="panel_offline">Offline</div>
+        <div id="offline-stats" data-i18n="offline_checking">Checking cache&hellip;</div>
+        <div id="offline-status" data-i18n="offline_status">Model files are saved to this browser as they download. Turn the Vision features on once somewhere with internet and they'll work afterwards on the car's own WiFi, which has none.</div>
         <div class="btn-row" style="margin-top:8px;">
-          <button id="offline-btn" onclick="clearOfflineCache()">&#128465; Clear cached models</button>
+          <button id="offline-btn" onclick="clearOfflineCache()">&#128465; <span data-i18n="btn_clear_cache">Clear cached models</span></button>
         </div>
       </section>
       <footer id="app-footer">
-        <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" target="_blank" rel="noopener">&#128214; Official KS5017 Tutorial</a>
+        <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" target="_blank" rel="noopener">&#128214; <span data-i18n="footer_tutorial">Official KS5017 Tutorial</span></a>
         &nbsp;|&nbsp;
-        <a href="https://github.com/abourdim/video-car" target="_blank" rel="noopener">&#128187; Source on GitHub</a>
+        <a href="https://github.com/abourdim/video-car" target="_blank" rel="noopener">&#128187; <span data-i18n="footer_source">Source on GitHub</span></a>
         <span id="fw-build">firmware &hellip;</span>
       </footer>
-    <script>  
+    <script>
+   // --- i18n (EN/FR/AR), same data-i18n + dictionary pattern as bit-bot ---
+   var RTL_LANGS = { ar: true };
+   var I18N = {
+     en: {
+       conn_connecting: 'Connecting…', live: 'LIVE',
+       panel_drive: 'Drive', panel_manual: 'Manual',
+       btn_fwd: 'Fwd', btn_left: 'Left', btn_right: 'Right', btn_back: 'Back',
+       panel_autonomy: 'Autonomy', btn_follow: 'Follow Me',
+       follow_person: 'Follow: person', follow_ball: 'Follow: ball', follow_dog: 'Follow: dog',
+       follow_cat: 'Follow: cat', follow_bottle: 'Follow: bottle', follow_chair: 'Follow: chair',
+       follow_status: 'Drives the car on its own to keep the target centred and at a fixed distance. Any manual input disarms it. Give it clear floor space before arming.',
+       panel_classiccv: 'Classic CV', btn_motion: 'Motion', btn_line: 'Line', btn_chase: 'Colour chase',
+       btn_sample: 'Sample centre', label_light_line: 'light line',
+       cv_status: 'No models and no internet — pure pixel maths, so these keep up with the video stream on the car’s own WiFi. Line and Colour chase drive the car; give it floor space, and leave the Speed slider high since these cap themselves well below it.',
+       panel_vision: 'Vision', btn_vision: 'AI Vision',
+       vision_status: 'Runs in your browser (TensorFlow.js) — detects objects (cyan) and faces (amber). Needs internet on this network to load the models once.',
+       btn_plates: 'Plates',
+       plates_status: 'Reads text off detected vehicles (magenta) via OCR. Heuristic, low-res (320×240) camera — works best close, well-lit, and square-on to the plate.',
+       btn_codes: 'QR / Barcode',
+       codes_status: 'Uses your browser’s built-in scanner when available — no internet needed for this one. Falls back to a QR-only library (needs internet once) on browsers without native support.',
+       btn_pose: 'Pose', pose_status: 'Skeleton tracking (MoveNet) — needs internet once to load.',
+       btn_hands: 'Hands', hands_status: 'Hand/finger tracking — needs internet once to load.',
+       btn_expr: 'Expression', expr_status: 'Reads facial expressions (happy/sad/surprised/...) — needs internet once to load.',
+       panel_capture: 'Capture', btn_snapshot: 'Snapshot', btn_record: 'Record',
+       panel_systems: 'Systems', label_speed: 'Speed', label_trim: 'Trim', label_lights: 'Lights',
+       label_quality: 'Quality', label_resolution: 'Resolution', label_orientation: 'Orientation',
+       btn_flip: 'Flip', btn_mirror: 'Mirror',
+       panel_offline: 'Offline', offline_checking: 'Checking cache…',
+       offline_status: 'Model files are saved to this browser as they download. Turn the Vision features on once somewhere with internet and they’ll work afterwards on the car’s own WiFi, which has none.',
+       btn_clear_cache: 'Clear cached models',
+       footer_tutorial: 'Official KS5017 Tutorial', footer_source: 'Source on GitHub'
+     },
+     fr: {
+       conn_connecting: 'Connexion…', live: 'DIRECT',
+       panel_drive: 'Conduite', panel_manual: 'Manuel',
+       btn_fwd: 'Avant', btn_left: 'Gauche', btn_right: 'Droite', btn_back: 'Arrière',
+       panel_autonomy: 'Autonomie', btn_follow: 'Suivre',
+       follow_person: 'Suivre : personne', follow_ball: 'Suivre : balle', follow_dog: 'Suivre : chien',
+       follow_cat: 'Suivre : chat', follow_bottle: 'Suivre : bouteille', follow_chair: 'Suivre : chaise',
+       follow_status: 'Conduit la voiture toute seule pour garder la cible centrée et à distance fixe. Toute entrée manuelle la désarme. Prévoyez de l’espace au sol avant d’armer.',
+       panel_classiccv: 'Vision classique', btn_motion: 'Mouvement', btn_line: 'Ligne', btn_chase: 'Poursuite couleur',
+       btn_sample: 'Prélever au centre', label_light_line: 'ligne claire',
+       cv_status: 'Aucun modèle ni internet — mathematiques de pixels pures, donc ça suit le flux vidéo sur le WiFi propre à la voiture. Ligne et Poursuite couleur pilotent la voiture ; laissez de l’espace au sol, et gardez le curseur Vitesse haut car ils se plafonnent bien en dessous.',
+       panel_vision: 'Vision', btn_vision: 'Vision IA',
+       vision_status: 'S’exécute dans votre navigateur (TensorFlow.js) — détecte objets (cyan) et visages (ambre). Besoin d’internet sur ce réseau pour charger les modèles une fois.',
+       btn_plates: 'Plaques',
+       plates_status: 'Lit le texte sur les véhicules détectés (magenta) via OCR. Heuristique, caméra basse résolution (320×240) — fonctionne mieux de près, bien éclairé, et de face.',
+       btn_codes: 'QR / Code-barres',
+       codes_status: 'Utilise le scanner intégré du navigateur quand disponible — aucun internet nécessaire pour celui-ci. Se rabat sur une bibliothèque QR seule (internet nécessaire une fois) sur les navigateurs sans support natif.',
+       btn_pose: 'Posture', pose_status: 'Suivi du squelette (MoveNet) — internet nécessaire une fois pour charger.',
+       btn_hands: 'Mains', hands_status: 'Suivi des mains/doigts — internet nécessaire une fois pour charger.',
+       btn_expr: 'Expression', expr_status: 'Lit les expressions faciales (heureux/triste/surpris/...) — internet nécessaire une fois pour charger.',
+       panel_capture: 'Capture', btn_snapshot: 'Photo', btn_record: 'Enregistrer',
+       panel_systems: 'Systèmes', label_speed: 'Vitesse', label_trim: 'Trim', label_lights: 'Lumières',
+       label_quality: 'Qualité', label_resolution: 'Résolution', label_orientation: 'Orientation',
+       btn_flip: 'Basculer', btn_mirror: 'Miroir',
+       panel_offline: 'Hors ligne', offline_checking: 'Vérification du cache…',
+       offline_status: 'Les fichiers de modèles sont enregistrés dans ce navigateur au fur et à mesure du téléchargement. Activez une fois les fonctionnalités Vision quelque part avec internet et elles fonctionneront ensuite sur le WiFi propre à la voiture, qui n’en a pas.',
+       btn_clear_cache: 'Vider les modèles en cache',
+       footer_tutorial: 'Tutoriel officiel KS5017', footer_source: 'Source sur GitHub'
+     },
+     ar: {
+       conn_connecting: 'جاري الاتصال…', live: 'مباشر',
+       panel_drive: 'القيادة', panel_manual: 'يدوي',
+       btn_fwd: 'أمام', btn_left: 'يسار', btn_right: 'يمين', btn_back: 'خلف',
+       panel_autonomy: 'القيادة الذاتية', btn_follow: 'تتبع',
+       follow_person: 'تتبع: شخص', follow_ball: 'تتبع: كرة', follow_dog: 'تتبع: كلب',
+       follow_cat: 'تتبع: قط', follow_bottle: 'تتبع: زجاجة', follow_chair: 'تتبع: كرسي',
+       follow_status: 'يقود السيارة ذاتيًا لإبقاء الهدف في المركز وعلى مسافة ثابتة. أي إدخال يدوي يلغيه. وفّر مساحة أرضية واضحة قبل التفعيل.',
+       panel_classiccv: 'رؤية حاسوبية كلاسيكية', btn_motion: 'حركة', btn_line: 'خط', btn_chase: 'مطاردة اللون',
+       btn_sample: 'أخذ عينة من المركز', label_light_line: 'خط فاتح',
+       cv_status: 'لا نماذج ولا إنترنت — حسابات بكسلات خالصة، لذا تواكب بث الفيديو على شبكة WiFi الخاصة بالسيارة. الخط ومطاردة اللون يقودان السيارة؛ وفّر مساحة أرضية، وابق شريط السرعة مرتفعًا لأنهما يحدان أنفسهما تحته.',
+       panel_vision: 'الرؤية', btn_vision: 'رؤية الذكاء الاصطناعي',
+       vision_status: 'يعمل في متصفحك (TensorFlow.js) — يكتشف الأجسام (سيان) والوجوه (كهرماني). يحتاج إنترنت على هذه الشبكة لتحميل النماذج مرة واحدة.',
+       btn_plates: 'اللوحات',
+       plates_status: 'يقرأ النص من المركبات المكتشفة (وردي) عبر OCR. تقريبي، كاميرا منخفضة الدقة (320×240) — يعمل بشكل أفضل عن قرب، بإضاءة جيدة، ومواجهة اللوحة مباشرة.',
+       btn_codes: 'QR / باركود',
+       codes_status: 'يستخدم الماسح المدمج في المتصفح عند توفره — لا حاجة للإنترنت لهذا. يعود إلى مكتبة QR فقط (تحتاج إنترنت مرة واحدة) على المتصفحات بدون دعم أصلي.',
+       btn_pose: 'الوضعية', pose_status: 'تتبع الهيكل العظمي (MoveNet) — يحتاج إنترنت مرة واحدة للتحميل.',
+       btn_hands: 'اليدان', hands_status: 'تتبع اليدين/الأصابع — يحتاج إنترنت مرة واحدة للتحميل.',
+       btn_expr: 'التعبير', expr_status: 'يقرأ تعابير الوجه (سعيد/حزين/مفاجئ/...) — يحتاج إنترنت مرة واحدة للتحميل.',
+       panel_capture: 'التقاط', btn_snapshot: 'لقطة', btn_record: 'تسجيل',
+       panel_systems: 'الأنظمة', label_speed: 'السرعة', label_trim: 'الضبط', label_lights: 'الأضواء',
+       label_quality: 'الجودة', label_resolution: 'الدقة', label_orientation: 'الاتجاه',
+       btn_flip: 'قلب', btn_mirror: 'مرآة',
+       panel_offline: 'دون اتصال', offline_checking: 'جاري فحص الذاكرة المؤقتة…',
+       offline_status: 'تُحفظ ملفات النماذج في هذا المتصفح أثناء تنزيلها. فعّل ميزات الرؤية مرة واحدة في مكان به إنترنت وستعمل بعد ذلك على شبكة WiFi الخاصة بالسيارة، التي لا تملك واحدة.',
+       btn_clear_cache: 'مسح النماذج المخزّنة',
+       footer_tutorial: 'الدليل الرسمي KS5017', footer_source: 'المصدر على GitHub'
+     }
+   };
+   function tr(key) {
+     var lang = document.documentElement.lang || 'en';
+     if (I18N[lang] && I18N[lang][key] !== undefined) return I18N[lang][key];
+     return I18N.en[key] !== undefined ? I18N.en[key] : key;
+   }
+   function applyLang(lang) {
+     if (!I18N[lang]) lang = 'en';
+     document.documentElement.lang = lang;
+     document.documentElement.dir = RTL_LANGS[lang] ? 'rtl' : 'ltr';
+     document.querySelectorAll('[data-i18n]').forEach(function(el) { el.textContent = tr(el.getAttribute('data-i18n')); });
+     document.querySelectorAll('.lang-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.lang === lang); });
+     try { localStorage.setItem('videocar-lang', lang); } catch (e) {}
+   }
+   function setLang(lang) { applyLang(lang); }
+   (function() {
+     var saved = 'en';
+     try { saved = localStorage.getItem('videocar-lang') || 'en'; } catch (e) {}
+     applyLang(saved);
+   })();
+
    // --- Settings persistence ---
    // Every control (Speed/Trim/Lights/Quality/Resolution/Flip/Mirror) is
    // persisted two ways: on the car itself (NVS flash, via prefs.putInt in
