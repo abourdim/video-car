@@ -264,6 +264,26 @@
     autonomous sender racing a manual one would be the worse version of it.</p>
   </div>
 
+  <div class="panel">
+    <h3>OTA firmware updates &amp; WiFi setup portal <span class="tag">new endpoints</span></h3>
+    <p>Two independent ways to update firmware over WiFi &mdash; a browser upload form
+    (<code>POST /update</code>, raw <code>.bin</code> body via <code>Update.h</code>, no
+    multipart parsing needed since <code>fetch(body: file)</code> already sends exactly
+    that) and <code>ArduinoOTA</code> for a PlatformIO push via a new
+    <code>firmware/4_videocar/ota_flash.sh</code> script and <code>esp32cam-ota</code>
+    env. Both work whether the car is on its own AP or a joined router, since
+    <code>espota.py -i</code> targets an IP directly and doesn't need mDNS discovery.</p>
+    <p>Required switching <code>board_build.partitions</code> from <code>huge_app.csv</code>
+    to <code>min_spiffs.csv</code> &mdash; the former has no OTA partitions at all. This
+    caps future firmware growth at ~1.9MB instead of 3MB (currently at 60%, was 32%);
+    Arduino IDE users need to select "Minimal SPIFFS (1.9MB APP with OTA)" to match.</p>
+    <p>Also added an opt-in WiFiManager captive portal (<code>GET /wifi-setup</code>,
+    <code>VideoCar-Setup</code> network) for joining a home WiFi network without
+    reflashing hardcoded credentials. A new <code>wifi_mode</code> NVS flag (default 0)
+    means a board that's never used this boots identically to before &mdash; the portal
+    is purely opt-in, triggered from a new Firmware / Network panel on the control page.</p>
+  </div>
+
   <h2><span class="dot"></span>Files changed</h2>
   <div class="panel">
     <table>
@@ -556,6 +576,11 @@
         <code>GET</code>, so a bare <code>&lt;img src&gt;</code> on any page open in a
         connected browser is enough. The default AP password
         (<code>88888888</code>) is also weak.</li>
+      <li>Same gap on the new OTA endpoints: <code>POST /update</code> accepts a firmware
+        image from anyone on the network with no signing or auth check, and
+        <code>GET /wifi-setup</code> can be triggered by anyone too (it only opens a
+        portal that itself needs the target WiFi's password, so it can't leak the car's
+        network on its own, but it can knock the car offline for up to 3 minutes).</li>
       <li><code>Access-Control-Allow-Origin: *</code> on the control endpoints. The
         stream now sets it deliberately, so that the control page's canvas can read
         frames; the control endpoints do not need it.</li>

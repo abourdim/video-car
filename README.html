@@ -294,9 +294,11 @@ README.html               This document</code></pre>
       </tr>
       <tr>
         <td><code>board_build.partitions</code></td>
-        <td><code>huge_app.csv</code></td>
-        <td data-i18n="ini_partitions">The camera+WiFi+webserver binary doesn't fit the default partition table.
-        Same as picking "Huge APP (3MB No OTA/1MB SPIFFS)" in Arduino IDE.</td>
+        <td><code>min_spiffs.csv</code></td>
+        <td data-i18n="ini_partitions">Needs two OTA app slots for firmware updates (see <a href="#ota">OTA &amp; WiFi setup</a> below),
+        which <code>huge_app.csv</code> doesn't have at all. <code>min_spiffs.csv</code> gives two
+        ~1.9MB slots instead of one 3MB slot &mdash; the firmware is currently about 1.1MB (60%),
+        comfortably under that, but it's a harder ceiling on future growth than before.</td>
       </tr>
       <tr>
         <td><code>build_flags</code></td>
@@ -312,6 +314,12 @@ README.html               This document</code></pre>
         <td><code>460800</code></td>
         <td data-i18n="ini_uploadspeed">Safer default than 921600 for boards flashed through a bare FTDI adapter
         with no auto-reset circuit.</td>
+      </tr>
+      <tr>
+        <td><code>lib_deps</code></td>
+        <td><code>tzapu/WiFiManager</code></td>
+        <td data-i18n="ini_libdeps">Backs the web-triggered WiFi setup captive portal (see <a href="#ota">OTA &amp; WiFi setup</a>
+        below). Arduino IDE users need to install it separately via Library Manager.</td>
       </tr>
     </table>
 
@@ -333,8 +341,44 @@ README.html               This document</code></pre>
 
     <h3 data-i18n="h3_arduino">Arduino IDE (Codes/4_VideoCar/)</h3>
     <p data-i18n="arduino_p">Standard Arduino IDE flow. Make sure <code>Tools &gt; PSRAM</code> is set to
-    <code>Enabled</code> and <code>Tools &gt; Partition Scheme</code> is set to a scheme
-    with enough app space (e.g. "Huge APP (3MB No OTA/1MB SPIFFS)").</p>
+    <code>Enabled</code>, <code>Tools &gt; Partition Scheme</code> is set to
+    <strong>"Minimal SPIFFS (1.9MB APP with OTA)"</strong> (needed for OTA updates &mdash; see
+    <a href="#ota">OTA &amp; WiFi setup</a> below), and the <strong>WiFiManager</strong> library
+    (by tzapu) is installed via <code>Tools &gt; Manage Libraries</code>.</p>
+  </div>
+
+  <h2 id="ota"><span class="dot"></span><span data-i18n="h_ota">OTA &amp; WiFi setup</span></h2>
+  <div class="panel">
+    <p data-i18n="ota_p1">Two independent ways to update firmware over WiFi, plus an opt-in way to join a
+    home network instead of the car's own AP &mdash; none of this changes the default
+    out-of-the-box experience (<code>keyes1</code> AP, USB flashing) unless you use it.</p>
+
+    <h3 data-i18n="ota_h_browser">Browser upload</h3>
+    <p data-i18n="ota_p2">The control page's collapsible <strong>Firmware / Network</strong> panel has a file
+    picker: choose a <code>firmware.bin</code> built for this board and press
+    <strong>Upload &amp; flash</strong>. The car reboots automatically once the upload finishes.
+    Works whether the car is on its own AP or a joined router.</p>
+
+    <h3 data-i18n="ota_h_espota">PlatformIO / espota</h3>
+    <p data-i18n="ota_p3">For anyone with PlatformIO installed:</p>
+    <pre><code>firmware/4_videocar/ota_flash.sh &lt;car-ip&gt; [path/to/firmware.bin]</code></pre>
+    <p data-i18n="ota_p4">No image path given rebuilds from source and pushes it; a path given (e.g. a
+    previously built <code>.pio/build/esp32cam/firmware.bin</code>) uploads that exact binary with no
+    rebuild. Default IP on the car's own AP is <code>192.168.4.1</code>; on a router, read the IP
+    off the serial monitor.</p>
+
+    <h3 data-i18n="ota_h_wifisetup">WiFi setup portal</h3>
+    <p data-i18n="ota_p5">The same Firmware / Network panel has a <strong>WiFi setup&hellip;</strong> button. It reboots
+    the car into a WiFiManager captive portal on a separate <code>VideoCar-Setup</code> network
+    &mdash; join it within 3 minutes, pick your home WiFi from the list it shows, and enter its
+    password. On success the car saves it and reboots into that network; on failure or timeout
+    it reboots back into whatever mode it was using before, so the car never gets stuck
+    unreachable.</p>
+    <div class="note" data-i18n="ota_note">This is a genuinely disruptive flow: the car can't drive while the portal is open,
+    and you'll join two different WiFi networks in sequence (the car's, then
+    <code>VideoCar-Setup</code>, then your home network). Same caveat as the rest of this
+    control surface: the <code>/update</code> and <code>/wifi-setup</code> endpoints have no
+    authentication &mdash; see <a href="report.html">report.html</a>.</div>
   </div>
 
   <h2 id="troubleshooting"><span class="dot"></span><span data-i18n="h_troubleshooting">Troubleshooting</span></h2>
@@ -462,14 +506,25 @@ README.html               This document</code></pre>
       app_videocar: "Le projet principal &mdash; voir le tableau ci-dessous pour comprendre pourquoi son <code>platformio.ini</code> a des réglages supplémentaires dont les trois autres n'ont pas besoin.",
       th_setting: "Réglage", th_value: "Valeur", th_why: "Pourquoi",
       ini_platform: "Figé, pas laissé sur \"latest\" &mdash; une plateforme non figée peut silencieusement tirer une version du pilote <code>esp32-camera</code> différente de celle installée par Arduino IDE, ce qui change le comportement de sondage du capteur caméra. <code>6.5.0</code> (arduino-esp32 2.0.14) est la version confirmée fonctionner pour ce projet. Les trois autres apps sont figées sur la même version aussi, par cohérence, même si elles sont trop simples pour y être sensibles.",
-      ini_partitions: "Le binaire caméra+WiFi+serveur web ne tient pas dans la table de partitions par défaut. Équivalent au choix \"Huge APP (3MB No OTA/1MB SPIFFS)\" dans Arduino IDE.",
+      ini_partitions: "A besoin de deux emplacements d'app OTA pour les mises à jour de firmware (voir <a href=\"#ota\">OTA et configuration WiFi</a> ci-dessous), que <code>huge_app.csv</code> n'a pas du tout. <code>min_spiffs.csv</code> donne deux emplacements d'environ 1,9Mo au lieu d'un seul de 3Mo &mdash; le firmware fait actuellement environ 1,1Mo (60%), largement en dessous, mais c'est un plafond plus contraignant pour la croissance future qu'auparavant.",
       ini_buildflags: "Le menu <code>Tools &gt; PSRAM: Enabled</code> d'Arduino IDE règle cela en coulisses ; la définition de carte générique <code>esp32cam</code> de PlatformIO ne le fait pas, même si la carte a de la PSRAM. <strong>C'était la véritable cause racine de \"fonctionne dans Arduino IDE, la caméra échoue dans PlatformIO\" (<code>Camera init failed with error 0x106</code>)</strong> &mdash; voir <a href=\"#troubleshooting\">Dépannage</a>.",
+      ini_libdeps: "Prend en charge le portail captif de configuration WiFi déclenché depuis le navigateur (voir <a href=\"#ota\">OTA et configuration WiFi</a> ci-dessous). Les utilisateurs d'Arduino IDE doivent l'installer séparément via le gestionnaire de bibliothèques.",
       ini_uploadspeed: "Valeur par défaut plus sûre que 921600 pour les cartes flashées via un simple adaptateur FTDI sans circuit de reset automatique.",
       menu_label: "menu",
       launch_p: "<span>Il demande avec quelle app travailler au démarrage (découvre automatiquement tout</span> <code>firmware/&lt;nom&gt;/platformio.ini</code>), et l'option 0 change d'app à tout moment sans redémarrer le script. L'option 4 (Flash) affiche le rappel IO0/bouton BOOT dont ont besoin la plupart des programmeurs ESP32-CAM nus : maintenez IO0, appuyez sur RESET, relâchez IO0 dès que \"Connecting....\" retente activement &mdash; et un avertissement supplémentaire pour <code>3_motor</code> pour laisser de l'espace à la voiture.",
       clean_note: "Si vous modifiez un <code>platformio.ini</code> (par ex. en refigeant la version de la plateforme), lancez l'option 8 (Clean) avant de recompiler pour qu'un cache <code>.pio/</code> obsolète ne masque pas le changement.",
       h3_arduino: "Arduino IDE (Codes/4_VideoCar/)",
-      arduino_p: "Flux Arduino IDE standard. Assurez-vous que <code>Tools &gt; PSRAM</code> est réglé sur <code>Enabled</code> et que <code>Tools &gt; Partition Scheme</code> est réglé sur un schéma avec assez d'espace app (par ex. \"Huge APP (3MB No OTA/1MB SPIFFS)\").",
+      arduino_p: "Flux Arduino IDE standard. Assurez-vous que <code>Tools &gt; PSRAM</code> est réglé sur <code>Enabled</code>, que <code>Tools &gt; Partition Scheme</code> est réglé sur <strong>\"Minimal SPIFFS (1.9MB APP with OTA)\"</strong> (nécessaire pour les mises à jour OTA &mdash; voir <a href=\"#ota\">OTA et configuration WiFi</a> ci-dessous), et que la bibliothèque <strong>WiFiManager</strong> (par tzapu) est installée via <code>Tools &gt; Manage Libraries</code>.",
+      h_ota: "OTA et configuration WiFi",
+      ota_p1: "Deux façons indépendantes de mettre à jour le firmware par WiFi, plus un moyen optionnel de rejoindre un réseau domestique au lieu du point d'accès propre de la voiture &mdash; rien de tout cela ne change l'expérience par défaut (point d'accès <code>keyes1</code>, flashage USB) à moins de l'utiliser.",
+      ota_h_browser: "Envoi depuis le navigateur",
+      ota_p2: "Le panneau rétractable <strong>Firmware / Réseau</strong> de la page de contrôle a un sélecteur de fichier : choisissez un <code>firmware.bin</code> compilé pour cette carte et appuyez sur <strong>Envoyer et flasher</strong>. La voiture redémarre automatiquement une fois l'envoi terminé. Fonctionne que la voiture soit sur son propre point d'accès ou sur un routeur rejoint.",
+      ota_h_espota: "PlatformIO / espota",
+      ota_p3: "Pour quiconque a PlatformIO installé :",
+      ota_p4: "Sans chemin d'image, recompile depuis les sources et l'envoie ; avec un chemin (par ex. un <code>.pio/build/esp32cam/firmware.bin</code> déjà compilé), envoie ce binaire exact sans recompiler. L'IP par défaut sur le point d'accès propre de la voiture est <code>192.168.4.1</code> ; sur un routeur, relevez l'IP sur le moniteur série.",
+      ota_h_wifisetup: "Portail de configuration WiFi",
+      ota_p5: "Le même panneau Firmware / Réseau a un bouton <strong>Configuration WiFi&hellip;</strong>. Il redémarre la voiture dans un portail captif WiFiManager sur un réseau séparé <code>VideoCar-Setup</code> &mdash; rejoignez-le dans les 3 minutes, choisissez votre WiFi domestique dans la liste affichée, et entrez son mot de passe. En cas de succès, la voiture l'enregistre et redémarre sur ce réseau ; en cas d'échec ou de délai dépassé, elle redémarre dans le mode qu'elle utilisait avant, pour ne jamais rester injoignable.",
+      ota_note: "C'est un flux réellement perturbateur : la voiture ne peut pas rouler tant que le portail est ouvert, et vous rejoindrez deux réseaux WiFi différents dans l'ordre (celui de la voiture, puis <code>VideoCar-Setup</code>, puis votre réseau domestique). Même mise en garde que pour le reste de cette surface de contrôle : les points de terminaison <code>/update</code> et <code>/wifi-setup</code> n'ont aucune authentification &mdash; voir <a href=\"report.html\">report.html</a>.",
       h_troubleshooting: "Dépannage",
       ts_intro: "<span>Voir aussi la section</span> <a href=\"https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html#common-problems\" target=\"_blank\" rel=\"noopener\">Common Problems</a> du tutoriel officiel (mauvaise sélection de carte, problèmes de connexion IP/WiFi, batterie/charge) pour les problèmes sans rapport avec les changements de ce dépôt.",
       ts_h1: "Camera init failed avec l'erreur 0x106 (seulement sous PlatformIO, fonctionne bien dans Arduino IDE)",
@@ -531,14 +586,25 @@ README.html               This document</code></pre>
       app_videocar: "المشروع الرئيسي &mdash; انظر الجدول أدناه لمعرفة سبب احتواء <code>platformio.ini</code> الخاص به على إعدادات إضافية لا تحتاجها الثلاثة الأخرى.",
       th_setting: "الإعداد", th_value: "القيمة", th_why: "السبب",
       ini_platform: "مثبّت، وليس متروكًا على \"latest\" &mdash; منصة غير مثبّتة قد تسحب بصمت إصدار برنامج تشغيل <code>esp32-camera</code> مختلفًا عمّا ثبّته Arduino IDE، مما يغيّر سلوك فحص حساس الكاميرا. <code>6.5.0</code> (arduino-esp32 2.0.14) هو الإصدار المؤكد عمله مع هذا المشروع. التطبيقات الثلاثة الأخرى مثبّتة على نفس الإصدار أيضًا، للاتساق، رغم أنها بسيطة جدًا لتكون حساسة له.",
-      ini_partitions: "الملف الثنائي للكاميرا+WiFi+خادم الويب لا يتسع في جدول التقسيم الافتراضي. يعادل اختيار \"Huge APP (3MB No OTA/1MB SPIFFS)\" في Arduino IDE.",
+      ini_partitions: "يحتاج إلى مسارَي تطبيق OTA لتحديثات الفيرموير (انظر <a href=\"#ota\">OTA وإعداد WiFi</a> أدناه)، وهو ما لا يوفره <code>huge_app.csv</code> إطلاقًا. يوفر <code>min_spiffs.csv</code> مسارين بحجم ~1.9 ميجابايت بدلًا من مسار واحد بحجم 3 ميجابايت &mdash; الفيرموير حاليًا حوالي 1.1 ميجابايت (60%)، وهو أقل بكثير من ذلك، لكنه سقف أكثر صرامة للنمو المستقبلي مما كان عليه سابقًا.",
       ini_buildflags: "قائمة <code>Tools &gt; PSRAM: Enabled</code> في Arduino IDE تضبط هذه خلف الكواليس؛ تعريف اللوحة العام <code>esp32cam</code> في PlatformIO لا يفعل ذلك، رغم أن اللوحة تحتوي PSRAM. <strong>كان هذا السبب الجذري الفعلي لـ\"يعمل في Arduino IDE، تفشل الكاميرا في PlatformIO\" (<code>Camera init failed with error 0x106</code>)</strong> &mdash; انظر <a href=\"#troubleshooting\">استكشاف الأخطاء</a>.",
+      ini_libdeps: "يدعم البوابة الأسيرة لإعداد WiFi التي يتم تشغيلها من المتصفح (انظر <a href=\"#ota\">OTA وإعداد WiFi</a> أدناه). يحتاج مستخدمو Arduino IDE إلى تثبيتها بشكل منفصل عبر مدير المكتبات.",
       ini_uploadspeed: "افتراضي أكثر أمانًا من 921600 للوحات المفلوشة عبر محول FTDI بسيط بدون دائرة إعادة تشغيل تلقائية.",
       menu_label: "القائمة",
       launch_p: "<span>يسأل عن التطبيق للعمل معه عند البدء (يكتشف تلقائيًا أي</span> <code>firmware/&lt;name&gt;/platformio.ini</code>)، والخيار 0 يبدّل التطبيقات في أي وقت دون إعادة تشغيل السكربت. الخيار 4 (Flash) يطبع تذكير زر IO0/BOOT الذي تحتاجه معظم مبرمجات ESP32-CAM المجردة: أمسك IO0، اضغط RESET، حرّر IO0 بمجرد أن تبدأ \"Connecting....\" بإعادة المحاولة فعليًا &mdash; مع تحذير إضافي لـ<code>3_motor</code> بترك مساحة للسيارة كي تتحرك.",
       clean_note: "إذا غيّرت <code>platformio.ini</code> (مثلًا بإعادة تثبيت إصدار المنصة)، شغّل الخيار 8 (Clean) قبل إعادة البناء حتى لا تخفي ذاكرة تخزين مؤقت <code>.pio/</code> قديمة التغيير.",
       h3_arduino: "Arduino IDE (Codes/4_VideoCar/)",
-      arduino_p: "تدفق Arduino IDE القياسي. تأكد من ضبط <code>Tools &gt; PSRAM</code> على <code>Enabled</code> وأن <code>Tools &gt; Partition Scheme</code> مضبوط على مخطط يحتوي مساحة تطبيق كافية (مثل \"Huge APP (3MB No OTA/1MB SPIFFS)\").",
+      arduino_p: "تدفق Arduino IDE القياسي. تأكد من ضبط <code>Tools &gt; PSRAM</code> على <code>Enabled</code>، وأن <code>Tools &gt; Partition Scheme</code> مضبوط على <strong>\"Minimal SPIFFS (1.9MB APP with OTA)\"</strong> (مطلوب لتحديثات OTA &mdash; انظر <a href=\"#ota\">OTA وإعداد WiFi</a> أدناه)، وأن مكتبة <strong>WiFiManager</strong> (بواسطة tzapu) مثبّتة عبر <code>Tools &gt; Manage Libraries</code>.",
+      h_ota: "OTA وإعداد WiFi",
+      ota_p1: "طريقتان مستقلتان لتحديث الفيرموير عبر WiFi، بالإضافة إلى طريقة اختيارية للانضمام إلى شبكة منزلية بدلًا من نقطة وصول السيارة الخاصة &mdash; لا شيء من هذا يغيّر التجربة الافتراضية الجاهزة للاستخدام (نقطة وصول <code>keyes1</code>، الفلاش عبر USB) ما لم تستخدمه.",
+      ota_h_browser: "الرفع من المتصفح",
+      ota_p2: "لوحة <strong>الفيرموير / الشبكة</strong> القابلة للطي في صفحة التحكم بها منتقي ملفات: اختر <code>firmware.bin</code> مبنيًا لهذه اللوحة واضغط <strong>رفع وفلاش</strong>. تعيد السيارة التشغيل تلقائيًا بمجرد انتهاء الرفع. يعمل سواء كانت السيارة على نقطة وصولها الخاصة أو على جهاز توجيه منضم إليه.",
+      ota_h_espota: "PlatformIO / espota",
+      ota_p3: "لمن لديه PlatformIO مثبّتًا:",
+      ota_p4: "بدون تحديد مسار صورة، يعيد البناء من المصدر ويرفعه؛ مع تحديد مسار (مثل <code>.pio/build/esp32cam/firmware.bin</code> مبني مسبقًا)، يرفع ذلك الملف الثنائي بالضبط دون إعادة بناء. عنوان IP الافتراضي على نقطة وصول السيارة الخاصة هو <code>192.168.4.1</code>؛ على جهاز توجيه، اقرأ العنوان من شاشة المراقبة التسلسلية.",
+      ota_h_wifisetup: "بوابة إعداد WiFi",
+      ota_p5: "نفس لوحة الفيرموير / الشبكة بها زر <strong>إعداد WiFi&hellip;</strong>. يعيد تشغيل السيارة في بوابة أسيرة WiFiManager على شبكة منفصلة باسم <code>VideoCar-Setup</code> &mdash; انضم إليها خلال 3 دقائق، اختر شبكة WiFi المنزلية من القائمة المعروضة، وأدخل كلمة المرور الخاصة بها. عند النجاح، تحفظها السيارة وتعيد التشغيل على تلك الشبكة؛ عند الفشل أو انتهاء المهلة، تعيد التشغيل إلى الوضع الذي كانت تستخدمه من قبل، حتى لا تبقى السيارة غير متاحة أبدًا.",
+      ota_note: "هذا تدفق معطِّل فعليًا: لا يمكن للسيارة القيادة أثناء فتح البوابة، وستنضم إلى شبكتَي WiFi مختلفتين بالتتابع (شبكة السيارة، ثم <code>VideoCar-Setup</code>، ثم شبكتك المنزلية). نفس التحذير بالنسبة لبقية سطح التحكم هذا: نقطتا النهاية <code>/update</code> و<code>/wifi-setup</code> ليس لديهما أي مصادقة &mdash; انظر <a href=\"report.html\">report.html</a>.",
       h_troubleshooting: "استكشاف الأخطاء",
       ts_intro: "<span>راجع أيضًا قسم</span> <a href=\"https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html#common-problems\" target=\"_blank\" rel=\"noopener\">Common Problems</a> في الدليل الرسمي (اختيار لوحة خاطئ، مشاكل اتصال IP/WiFi، البطارية/الشحن) للمشاكل غير المرتبطة بتغييرات هذا المستودع.",
       ts_h1: "فشل تهيئة الكاميرا بخطأ 0x106 (فقط تحت PlatformIO، يعمل بشكل جيد في Arduino IDE)",

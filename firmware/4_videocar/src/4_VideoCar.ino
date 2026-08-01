@@ -5,6 +5,7 @@
   Set ap to 0 to connect to a router using DHCP with hostname espressif
 */
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 #include "esp_wifi.h"
 #include "esp_camera.h"
 #include "soc/soc.h"
@@ -29,6 +30,12 @@ int maxconnection = 1;  // Only allow one device to connect
 // Station mode only: how long to wait for the router before giving up and
 // falling back to standalone AP mode. See the connect block in setup().
 #define STA_CONNECT_TIMEOUT_MS 20000
+
+// Set when a WiFi network configured via the web-triggered WiFiManager setup
+// portal (see enterWifiSetupPortal() in app_server.h) is what's actually in
+// use, so loop()'s reconnect logic knows to retry that saved network instead
+// of the hardcoded ssid/password above.
+bool g_usingSavedWifi = false;
 
 // Camera Pin Definitions - Don't heckin' touch.
 #define PWDN_GPIO_NUM 32
@@ -153,14 +160,27 @@ void setup() {
   pinMode(LED_GPIO_NUM,OUTPUT);
   analogWrite(LED_GPIO_NUM, flashLevel);
 
-  if (!ap) {
-    // Connect to Router
-    Serial.println("ssid: " + (String)ssid);
-    Serial.println("password: " + (String)password);
-    Serial.println("WiFi is Client Scout32");
-    WiFi.mode(WIFI_STA);
-    WiFi.setAutoReconnect(true);
-    WiFi.begin(ssid, password);
+  // A WiFi network configured through the web's "WiFi setup" button (see
+  // enterWifiSetupPortal() in app_server.h) is only ever recorded here on
+  // success, so a board that's never used that flow boots exactly as it
+  // always did -- straight into the block below unchanged.
+  g_usingSavedWifi = prefs.getInt("wifi_mode", 0) == 1;
+
+  if (g_usingSavedWifi || !ap) {
+    if (g_usingSavedWifi) {
+      Serial.println("WiFi is Client Scout32 (network saved via setup portal)");
+      WiFi.mode(WIFI_STA);
+      WiFi.setAutoReconnect(true);
+      WiFi.begin();  // no args: reconnects to whatever the ESP32 itself last saved
+    } else {
+      // Connect to Router
+      Serial.println("ssid: " + (String)ssid);
+      Serial.println("password: " + (String)password);
+      Serial.println("WiFi is Client Scout32");
+      WiFi.mode(WIFI_STA);
+      WiFi.setAutoReconnect(true);
+      WiFi.begin(ssid, password);
+    }
     // Bounded wait. This loop used to be unbounded, so a wrong password, a
     // router that's out of range, or a 5GHz-only SSID meant setup() never
     // returned: no camera server, no AP, no way to reach the car at all
@@ -176,8 +196,9 @@ void setup() {
       Serial.print("Camera Ready! Use 'http://");
       Serial.print(WiFi.localIP());
       Serial.println("' to connect");
+      ap = 0;
     } else {
-      Serial.println("Could not join the router within STA_CONNECT_TIMEOUT_MS.");
+      Serial.println("Could not join the WiFi network within STA_CONNECT_TIMEOUT_MS.");
       Serial.println("Falling back to standalone AP mode so the car stays reachable.");
       WiFi.disconnect(true);
       ap = 1;  // also stops loop()'s station-mode reconnect logic from running
@@ -197,6 +218,13 @@ void setup() {
     Serial.print(WiFi.softAPIP());
     Serial.println("' to connect");
   }
+
+  // ArduinoOTA works over whichever interface just came up above -- station
+  // or the car's own AP -- since espota.py can target an IP directly with
+  // -i and doesn't need mDNS discovery to do it. See firmware/4_videocar/
+  // ota_flash.sh and README.html's OTA section.
+  ArduinoOTA.setHostname("videocar");
+  ArduinoOTA.begin();
 
   //Flash LED as ready indicator
   for (int i = 0; i < 5; i++) {
@@ -234,10 +262,13 @@ void loop() {
     if (millis() - lastReconnectAttempt > WIFI_RECONNECT_INTERVAL_MS) {
       Serial.println("WiFi disconnected, attempting to reconnect...");
       WiFi.disconnect();
-      WiFi.begin(ssid, password);
+      if (g_usingSavedWifi) WiFi.begin();
+      else WiFi.begin(ssid, password);
       lastReconnectAttempt = millis();
     }
   }
+
+  ArduinoOTA.handle();
 
   delay(50);
   // Serial.printf("RSSi: %ld dBm\n",WiFi.RSSI());

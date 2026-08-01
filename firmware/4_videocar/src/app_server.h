@@ -2,6 +2,8 @@
 #define APP_SERVER_H
 
 #include <Preferences.h>
+#include <Update.h>
+#include <WiFiManager.h>
 
 // Define Servo PWM Values & Stopped Variable
 int speed = 248;  // matches the Speed slider's default UI position (8 * 31)
@@ -462,6 +464,106 @@ static esp_err_t joystick_handler(httpd_req_t *req) {
   return httpd_resp_send(req, NULL, 0);
 }
 
+// --- WiFi setup portal ------------------------------------------------------
+// The car normally boots straight into its own "keyes1" AP (or the hardcoded
+// router credentials, if ap=0 was set at compile time) -- that default never
+// changes. This adds an *opt-in* way to join a different WiFi network without
+// reflashing: a button on the control page hits /wifi-setup, which tears down
+// the camera server and hands control to WiFiManager's captive portal. The
+// portal is its own separate WiFi network ("VideoCar-Setup"); join it from a
+// phone or laptop, pick the target WiFi from the list it shows, and enter its
+// password. On success the credentials are saved to the ESP32's own NVS (the
+// same store WiFi.begin() with no arguments reconnects from) and a flag is
+// set so setup() knows to try that network before falling back to today's
+// default. The car reboots either way -- success, failure, or timeout -- so
+// it always comes back up through the same, well-tested boot path.
+#define WIFI_SETUP_PORTAL_TIMEOUT_S 180
+
+void enterWifiSetupPortal() {
+  Serial.println("Entering WiFi setup portal (VideoCar-Setup)...");
+  httpd_stop(camera_httpd);
+  httpd_stop(stream_httpd);
+
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(WIFI_SETUP_PORTAL_TIMEOUT_S);
+  bool connected = wm.startConfigPortal("VideoCar-Setup");
+
+  if (connected) {
+    Serial.println("WiFi setup portal succeeded, saving and rebooting...");
+    prefs.putInt("wifi_mode", 1);
+  } else {
+    Serial.println("WiFi setup portal timed out or failed, rebooting to previous mode...");
+  }
+  delay(200);
+  ESP.restart();
+}
+
+static esp_err_t wifisetup_handler(httpd_req_t *req) {
+  const char *msg =
+    "Rebooting into WiFi setup mode.\n\n"
+    "Connect to the \"VideoCar-Setup\" WiFi network within the next 3 minutes, "
+    "then follow the page that appears to pick your home WiFi and enter its "
+    "password.\n\n"
+    "If nothing happens within 3 minutes, the car reboots back into its usual "
+    "mode on its own.";
+  httpd_resp_set_type(req, "text/plain");
+  httpd_resp_send(req, msg, strlen(msg));
+  // Give the response time to actually reach the client before the servers
+  // backing this connection get torn down.
+  delay(300);
+  enterWifiSetupPortal();  // never returns -- reboots at the end
+  return ESP_OK;
+}
+
+// --- OTA firmware upload (browser) ------------------------------------------
+// POST /update with the raw .bin as the request body (no multipart wrapper --
+// a plain `fetch('/update', {method:'POST', body: file})` sends exactly
+// that, with a correct Content-Length, which is all this needs). Companion to
+// ArduinoOTA (network push via PlatformIO's espota, set up in the .ino) for
+// anyone who doesn't have PlatformIO installed. Same lack of authentication as
+// every other endpoint on this car -- see report.html.
+static esp_err_t update_handler(httpd_req_t *req) {
+  int remaining = req->content_len;
+  if (remaining <= 0) {
+    httpd_resp_send_500(req);
+    return ESP_FAIL;
+  }
+  if (!Update.begin(remaining)) {
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_send(req, "Update.begin() failed -- image too big for the OTA partition?", HTTPD_RESP_USE_STRLEN);
+    return ESP_FAIL;
+  }
+
+  char buf[1024];
+  while (remaining > 0) {
+    int to_read = remaining < (int)sizeof(buf) ? remaining : (int)sizeof(buf);
+    int r = httpd_req_recv(req, buf, to_read);
+    if (r <= 0) {
+      Update.abort();
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+    }
+    if (Update.write((uint8_t *)buf, r) != (size_t)r) {
+      Update.abort();
+      httpd_resp_set_status(req, "500 Internal Server Error");
+      httpd_resp_send(req, Update.errorString(), HTTPD_RESP_USE_STRLEN);
+      return ESP_FAIL;
+    }
+    remaining -= r;
+  }
+
+  if (!Update.end(true)) {
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_send(req, Update.errorString(), HTTPD_RESP_USE_STRLEN);
+    return ESP_FAIL;
+  }
+
+  httpd_resp_send(req, "OK, rebooting...", HTTPD_RESP_USE_STRLEN);
+  delay(300);
+  ESP.restart();
+  return ESP_OK;
+}
+
 static esp_err_t status_handler(httpd_req_t *req) {
   static char json_response[1024];  // Tell Jason his name is spelled wrong.
 
@@ -536,9 +638,11 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           header h1{font-size:15px;letter-spacing:.12em;margin:0;font-weight:700;text-transform:uppercase;}
           header h1 span{color:var(--amber);}
           #lang-switch{display:flex;gap:4px;}
-          .lang-btn{background:var(--panel);border:1px solid var(--border);color:var(--muted);
-            font-size:10px;font-weight:700;letter-spacing:.06em;padding:4px 7px;border-radius:6px;cursor:pointer;}
-          .lang-btn.active{background:var(--amber);color:#000;border-color:var(--amber);}
+          .lang-btn{background:var(--panel);border:1px solid var(--border);
+            display:flex;align-items:center;padding:3px;border-radius:5px;cursor:pointer;
+            opacity:.55;line-height:0;}
+          .lang-btn.active{border-color:var(--amber);opacity:1;box-shadow:0 0 0 1px var(--amber);}
+          .lang-btn svg{display:block;border-radius:2px;}
           .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
             margin:0 0 12px;padding:12px;}
           .panel-label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
@@ -657,9 +761,9 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
       <header>
         <h1>&#128663; VIDEO<span>CAR</span></h1>
         <div id="lang-switch">
-          <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
-          <button class="lang-btn" data-lang="fr" onclick="setLang('fr')">FR</button>
-          <button class="lang-btn" data-lang="ar" onclick="setLang('ar')">AR</button>
+          <button class="lang-btn active" data-lang="en" title="English" aria-label="English" onclick="setLang('en')"><svg width="22" height="15" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="6.5"/><path d="M0 0L60 40M60 0L0 40" stroke="#C8102E" stroke-width="3.5"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="11"/><path d="M30 0V40M0 20H60" stroke="#C8102E" stroke-width="6.5"/></svg></button>
+          <button class="lang-btn" data-lang="fr" title="Français" aria-label="Français" onclick="setLang('fr')"><svg width="22" height="15" viewBox="0 0 60 40"><rect width="20" height="40" fill="#002395"/><rect x="20" width="20" height="40" fill="#fff"/><rect x="40" width="20" height="40" fill="#ED2939"/></svg></button>
+          <button class="lang-btn" data-lang="ar" title="العربية" aria-label="العربية" onclick="setLang('ar')"><svg width="22" height="15" viewBox="0 0 900 600"><defs><clipPath id="glVC1"><rect width="450" height="600"/></clipPath></defs><rect width="450" height="600" fill="#006233"/><rect x="450" width="450" height="600" fill="#FFF"/><g fill="#D21034" transform="translate(450,300)"><circle r="125"/><circle cx="25" r="100" fill="#FFF"/><g clip-path="url(#glVC1)" transform="translate(-450,-300)"><circle cx="475" cy="300" r="100" fill="#006233"/></g><path d="M85-12l22 67h71l-57 42 22 67-58-42-57 42 21-67-57-42h71z"/></g></svg></button>
         </div>
         <div id="conn-status"><span id="conn-dot"></span><span id="conn-text" data-i18n="conn_connecting">Connecting&hellip;</span></div>
       </header>
@@ -808,6 +912,23 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
           <button id="offline-btn" onclick="clearOfflineCache()">&#128465; <span data-i18n="btn_clear_cache">Clear cached models</span></button>
         </div>
       </section>
+      <section class="panel collapsible" data-panel="firmware">
+        <div class="panel-label" data-i18n="panel_firmware">Firmware / Network</div>
+        <div id="ota-version" data-i18n="ota_version_loading">Checking current version&hellip;</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <input type="file" id="ota-file" accept=".bin" style="display:none" onchange="otaFileChosen()">
+          <button id="ota-pick-btn" onclick="document.getElementById('ota-file').click()">&#128190; <span data-i18n="btn_ota_pick">Choose .bin</span></button>
+          <button id="ota-upload-btn" onclick="otaUpload()" disabled>&#11014; <span data-i18n="btn_ota_upload">Upload &amp; flash</span></button>
+        </div>
+        <div id="ota-progress-row" style="display:none;margin-top:8px;">
+          <progress id="ota-progress" value="0" max="100" style="width:100%;"></progress>
+        </div>
+        <div id="ota-status" data-i18n="ota_status_idle">Pick a firmware.bin built for this board, then Upload &amp; flash. The car reboots automatically when done.</div>
+        <div class="btn-row" style="margin-top:14px;">
+          <button id="wifi-setup-btn" onclick="wifiSetup()">&#128246; <span data-i18n="btn_wifi_setup">WiFi setup&hellip;</span></button>
+        </div>
+        <div id="wifi-setup-status" data-i18n="wifi_setup_status">Join a home WiFi network instead of the car's own AP. Opens a separate "VideoCar-Setup" network to pick it from &mdash; the car reboots and is briefly unreachable during setup.</div>
+      </section>
       <footer id="app-footer">
         <a href="https://docs.keyestudio.com/projects/KS5017/en/latest/docs/Tutorial.html" target="_blank" rel="noopener">&#128214; <span data-i18n="footer_tutorial">Official KS5017 Tutorial</span></a>
         &nbsp;|&nbsp;
@@ -845,6 +966,16 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
        panel_offline: 'Offline', offline_checking: 'Checking cache…',
        offline_status: 'Model files are saved to this browser as they download. Turn the Vision features on once somewhere with internet and they’ll work afterwards on the car’s own WiFi, which has none.',
        btn_clear_cache: 'Clear cached models',
+       panel_firmware: 'Firmware / Network', ota_version_loading: 'Checking current version…',
+       btn_ota_pick: 'Choose .bin', btn_ota_upload: 'Upload & flash',
+       ota_status_idle: 'Pick a firmware.bin built for this board, then Upload & flash. The car reboots automatically when done.',
+       ota_status_ready: 'Ready to upload — this will reboot the car when it finishes.',
+       ota_status_uploading: 'Uploading…', ota_status_done: 'Done — rebooting…',
+       ota_status_error: 'Upload failed: ',
+       btn_wifi_setup: 'WiFi setup…',
+       wifi_setup_status: 'Join a home WiFi network instead of the car’s own AP. Opens a separate "VideoCar-Setup" network to pick it from — the car reboots and is briefly unreachable during setup.',
+       wifi_setup_confirm: 'This reboots the car into WiFi setup mode. You’ll need to join the "VideoCar-Setup" network to finish. Continue?',
+       wifi_setup_started: 'Rebooting into WiFi setup mode — join "VideoCar-Setup" from your WiFi list within 3 minutes.',
        footer_tutorial: 'Official KS5017 Tutorial', footer_source: 'Source on GitHub'
      },
      fr: {
@@ -874,6 +1005,16 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
        panel_offline: 'Hors ligne', offline_checking: 'Vérification du cache…',
        offline_status: 'Les fichiers de modèles sont enregistrés dans ce navigateur au fur et à mesure du téléchargement. Activez une fois les fonctionnalités Vision quelque part avec internet et elles fonctionneront ensuite sur le WiFi propre à la voiture, qui n’en a pas.',
        btn_clear_cache: 'Vider les modèles en cache',
+       panel_firmware: 'Firmware / Réseau', ota_version_loading: 'Vérification de la version actuelle…',
+       btn_ota_pick: 'Choisir .bin', btn_ota_upload: 'Envoyer et flasher',
+       ota_status_idle: 'Choisissez un firmware.bin compilé pour cette carte, puis Envoyer et flasher. La voiture redémarre automatiquement une fois terminé.',
+       ota_status_ready: 'Prêt à envoyer — cela redémarrera la voiture une fois terminé.',
+       ota_status_uploading: 'Envoi en cours…', ota_status_done: 'Terminé — redémarrage…',
+       ota_status_error: 'Échec de l’envoi : ',
+       btn_wifi_setup: 'Configuration WiFi…',
+       wifi_setup_status: 'Rejoignez un réseau WiFi domestique au lieu du point d’accès propre de la voiture. Ouvre un réseau séparé « VideoCar-Setup » pour le choisir — la voiture redémarre et est brièvement injoignable pendant la configuration.',
+       wifi_setup_confirm: 'Ceci redémarre la voiture en mode configuration WiFi. Vous devrez rejoindre le réseau « VideoCar-Setup » pour terminer. Continuer ?',
+       wifi_setup_started: 'Redémarrage en mode configuration WiFi — rejoignez « VideoCar-Setup » depuis votre liste WiFi dans les 3 minutes.',
        footer_tutorial: 'Tutoriel officiel KS5017', footer_source: 'Source sur GitHub'
      },
      ar: {
@@ -903,6 +1044,16 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
        panel_offline: 'دون اتصال', offline_checking: 'جاري فحص الذاكرة المؤقتة…',
        offline_status: 'تُحفظ ملفات النماذج في هذا المتصفح أثناء تنزيلها. فعّل ميزات الرؤية مرة واحدة في مكان به إنترنت وستعمل بعد ذلك على شبكة WiFi الخاصة بالسيارة، التي لا تملك واحدة.',
        btn_clear_cache: 'مسح النماذج المخزّنة',
+       panel_firmware: 'الفيرموير / الشبكة', ota_version_loading: 'جاري التحقق من الإصدار الحالي…',
+       btn_ota_pick: 'اختر ملف .bin', btn_ota_upload: 'رفع وفلاش',
+       ota_status_idle: 'اختر ملف firmware.bin مبنيًا لهذه اللوحة، ثم اضغط رفع وفلاش. تعيد السيارة التشغيل تلقائيًا عند الانتهاء.',
+       ota_status_ready: 'جاهز للرفع — سيؤدي هذا إلى إعادة تشغيل السيارة عند الانتهاء.',
+       ota_status_uploading: 'جاري الرفع…', ota_status_done: 'تم — جاري إعادة التشغيل…',
+       ota_status_error: 'فشل الرفع: ',
+       btn_wifi_setup: 'إعداد WiFi…',
+       wifi_setup_status: 'انضم إلى شبكة WiFi منزلية بدلًا من نقطة وصول السيارة الخاصة. يفتح شبكة منفصلة باسم "VideoCar-Setup" للاختيار منها — تعيد السيارة التشغيل وتصبح غير متاحة لفترة وجيزة أثناء الإعداد.',
+       wifi_setup_confirm: 'سيؤدي هذا إلى إعادة تشغيل السيارة في وضع إعداد WiFi. ستحتاج إلى الانضمام إلى شبكة "VideoCar-Setup" لإنهاء الإعداد. المتابعة؟',
+       wifi_setup_started: 'جاري إعادة التشغيل إلى وضع إعداد WiFi — انضم إلى "VideoCar-Setup" من قائمة WiFi خلال 3 دقائق.',
        footer_tutorial: 'الدليل الرسمي KS5017', footer_source: 'المصدر على GitHub'
      }
    };
@@ -989,8 +1140,63 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
                         + '  \u00b7  ' + vals.gitrev;
          if (/-dirty$/.test(vals.gitrev || '')) el.style.color = 'var(--amber)';
        }
+       var otaVer = document.getElementById('ota-version');
+       if (otaVer && vals.version) {
+         otaVer.textContent = 'v' + vals.version + '  \u00b7  ' + vals.build + '  \u00b7  ' + vals.gitrev;
+       }
      })
      .catch(function () { /* offline on load -- local cache (if any) stands */ });
+
+  // --- OTA firmware upload + WiFi setup ------------------------------------
+  // Companion to app_server.h's /update (raw-body POST, no multipart needed)
+  // and /wifi-setup (hands off to WiFiManager's captive portal) endpoints.
+  var otaChosenFile = null;
+  window.otaFileChosen = function () {
+    var input = document.getElementById('ota-file');
+    otaChosenFile = (input.files && input.files[0]) || null;
+    document.getElementById('ota-upload-btn').disabled = !otaChosenFile;
+    document.getElementById('ota-status').textContent = otaChosenFile
+      ? (tr('ota_status_ready') + ' (' + otaChosenFile.name + ', ' + Math.round(otaChosenFile.size / 1024) + ' KB)')
+      : tr('ota_status_idle');
+  };
+  window.otaUpload = function () {
+    if (!otaChosenFile) return;
+    var statusEl = document.getElementById('ota-status');
+    var rowEl = document.getElementById('ota-progress-row');
+    var barEl = document.getElementById('ota-progress');
+    document.getElementById('ota-upload-btn').disabled = true;
+    document.getElementById('ota-pick-btn').disabled = true;
+    rowEl.style.display = '';
+    statusEl.textContent = tr('ota_status_uploading');
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', document.location.origin + '/update');
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable) barEl.value = Math.round((e.loaded / e.total) * 100);
+    };
+    xhr.onload = function () {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        barEl.value = 100;
+        statusEl.textContent = tr('ota_status_done');
+      } else {
+        statusEl.textContent = tr('ota_status_error') + xhr.responseText;
+        document.getElementById('ota-upload-btn').disabled = false;
+        document.getElementById('ota-pick-btn').disabled = false;
+      }
+    };
+    xhr.onerror = function () {
+      statusEl.textContent = tr('ota_status_error') + 'network error';
+      document.getElementById('ota-upload-btn').disabled = false;
+      document.getElementById('ota-pick-btn').disabled = false;
+    };
+    xhr.send(otaChosenFile);
+  };
+  window.wifiSetup = function () {
+    if (!window.confirm(tr('wifi_setup_confirm'))) return;
+    document.getElementById('wifi-setup-status').textContent = tr('wifi_setup_started');
+    fetch(document.location.origin + '/wifi-setup').catch(function () {
+      // Expected: the car tears its server down mid-response once the portal starts.
+    });
+  };
 
   // --- Collapsible panels --------------------------------------------------
   // Collapsed by default so the page opens at roughly one and a half screens
@@ -2927,6 +3133,20 @@ void startCameraServer() {
     .user_ctx = NULL
   };
 
+  httpd_uri_t wifisetup_uri = {
+    .uri = "/wifi-setup",
+    .method = HTTP_GET,
+    .handler = wifisetup_handler,
+    .user_ctx = NULL
+  };
+
+  httpd_uri_t update_uri = {
+    .uri = "/update",
+    .method = HTTP_POST,
+    .handler = update_handler,
+    .user_ctx = NULL
+  };
+
   Serial.printf("Starting web server on port: '%d'\n", config.server_port);
   if (httpd_start(&camera_httpd, &config) == ESP_OK) {
     httpd_register_uri_handler(camera_httpd, &index_uri);
@@ -2934,6 +3154,8 @@ void startCameraServer() {
     httpd_register_uri_handler(camera_httpd, &status_uri);
     httpd_register_uri_handler(camera_httpd, &capture_uri);
     httpd_register_uri_handler(camera_httpd, &joystick_uri);
+    httpd_register_uri_handler(camera_httpd, &wifisetup_uri);
+    httpd_register_uri_handler(camera_httpd, &update_uri);
   }
 
   config.server_port += 1;
